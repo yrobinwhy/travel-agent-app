@@ -37,9 +37,12 @@ import {
   Search,
   Receipt,
   ShieldCheck,
+  Sun,
+  Moon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
 import type { LucideIcon } from "lucide-react";
 
 interface NavItem {
@@ -88,7 +91,9 @@ function NavGroup({
 }) {
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{label}</SidebarGroupLabel>
+      <SidebarGroupLabel className="text-xs font-medium tracking-wider uppercase text-muted-foreground/70">
+        {label}
+      </SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => (
@@ -96,8 +101,9 @@ function NavGroup({
               <SidebarMenuButton
                 isActive={pathname === item.href}
                 render={<Link href={item.href} />}
+                className="transition-premium"
               >
-                <item.icon />
+                <item.icon className="size-4" />
                 <span>{item.title}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -105,6 +111,21 @@ function NavGroup({
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
+  );
+}
+
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+
+  return (
+    <button
+      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-premium"
+      aria-label="Toggle theme"
+    >
+      <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+      <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+    </button>
   );
 }
 
@@ -117,11 +138,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/" />}>
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/20">
                 <Plane className="size-4" />
               </div>
               <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-semibold">TravelAgent Pro</span>
+                <span className="font-semibold gradient-text">TravelAgent Pro</span>
                 <span className="text-xs text-muted-foreground">
                   AI Travel Concierge
                 </span>
@@ -139,17 +160,26 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
       <SidebarFooter>
         <SidebarMenu>
+          {/* Theme toggle row */}
+          <SidebarMenuItem>
+            <div className="flex items-center justify-between px-2 py-1">
+              <span className="text-xs text-muted-foreground">Theme</span>
+              <ThemeToggle />
+            </div>
+          </SidebarMenuItem>
+
+          {/* User menu */}
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={<SidebarMenuButton size="lg" />}
               >
-                  <Avatar className="h-8 w-8">
+                  <Avatar className="h-8 w-8 ring-2 ring-primary/10">
                     <AvatarImage
                       src={user.image ?? undefined}
                       alt={user.name ?? "User"}
                     />
-                    <AvatarFallback>
+                    <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-violet-600 text-white text-sm font-medium">
                       {user.name?.charAt(0)?.toUpperCase() ?? "U"}
                     </AvatarFallback>
                   </Avatar>
