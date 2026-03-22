@@ -113,12 +113,17 @@ class ChatStore {
       const decoder = new TextDecoder();
       if (!reader) throw new Error("No reader");
 
+      let lineBuffer = "";
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
+        // Accumulate partial lines across reads
+        lineBuffer += decoder.decode(value, { stream: true });
+        const lines = lineBuffer.split("\n");
+        // Keep the last (possibly incomplete) line in the buffer
+        lineBuffer = lines.pop() || "";
 
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;

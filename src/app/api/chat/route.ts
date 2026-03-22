@@ -15,6 +15,7 @@ import { searchFlights } from "@/lib/flights";
 import type { FlightSearchResult } from "@/lib/flights";
 import { eq, asc } from "drizzle-orm";
 import type { ChatMessage } from "@/lib/ai/providers";
+import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 // Vercel serverless function config — extend timeout for flight searches
 export const maxDuration = 60; // seconds
@@ -36,8 +37,21 @@ export async function POST(request: Request) {
     modelId?: string;
   };
 
+  // Rate limit
+  const rl = rateLimit(session.user.id, "chat", RATE_LIMITS.chat);
+  if (!rl.allowed) {
+    return Response.json(
+      { error: "Too many messages. Please wait a moment." },
+      { status: 429, headers: { "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } }
+    );
+  }
+
   if (!message?.trim()) {
     return Response.json({ error: "Message is required" }, { status: 400 });
+  }
+
+  if (message.length > 10000) {
+    return Response.json({ error: "Message too long (max 10,000 characters)" }, { status: 400 });
   }
 
   const model = getModelById(modelId);
@@ -47,9 +61,17 @@ export async function POST(request: Request) {
 
   const provider = await getProvider(model);
 
-  // Get or create conversation
+  // Get or create conversation — verify ownership if existing
   let convId = conversationId;
-  if (!convId) {
+  if (convId) {
+    const [existingConv] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, convId));
+    if (!existingConv || existingConv.userId !== session.user.id) {
+      return Response.json({ error: "Conversation not found" }, { status: 404 });
+    }
+  } else {
     const [newConv] = await db
       .insert(conversations)
       .values({
@@ -147,7 +169,7 @@ export async function POST(request: Request) {
             // Execute all searches in parallel
             const searchPromises = flightCalls.map(async (tc) => {
               const params = parseToolCall(tc.toolInput);
-              console.log("[FLIGHT SEARCH] Params:", JSON.stringify(params));
+              if (process.env.NODE_ENV === "development") console.log("[FLIGHT SEARCH] Params:", JSON.stringify(params));
               try {
                 return await searchFlights(params);
               } catch (err) {
@@ -194,7 +216,7 @@ export async function POST(request: Request) {
               ? Math.min(...prices)
               : undefined;
 
-            console.log(
+            if (process.env.NODE_ENV === "development") console.log(
               "[FLIGHT SEARCH] Merged:",
               mergedResult.offers.length,
               "offers from",
@@ -320,6 +342,15 @@ export async function GET(request: Request) {
   const convId = searchParams.get("conversationId");
 
   if (convId) {
+    // Verify ownership before returning messages
+    const [conv] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, convId));
+    if (!conv || conv.userId !== session.user.id) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+
     const msgs = await db
       .select()
       .from(messages)

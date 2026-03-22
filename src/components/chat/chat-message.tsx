@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { Bot, User } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -50,8 +51,9 @@ export function ChatMessage({
                 "[&_table]:text-xs [&_th]:px-2 [&_td]:px-2",
                 "[&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm"
               )}
-              dangerouslySetInnerHTML={{ __html: formatMarkdown(content) }}
-            />
+            >
+              <ReactMarkdown>{content || ""}</ReactMarkdown>
+            </div>
             {isStreaming && (
               <span className="inline-block w-2 h-4 bg-emerald-500 animate-pulse rounded-sm" />
             )}
@@ -72,51 +74,5 @@ export function ChatMessage({
         </div>
       )}
     </div>
-  );
-}
-
-// Simple markdown to HTML (handles bold, italic, code, lists, headers)
-function formatMarkdown(text: string): string {
-  if (!text) return "";
-
-  return (
-    text
-      // Code blocks
-      .replace(
-        /```(\w+)?\n([\s\S]*?)```/g,
-        '<pre><code class="language-$1">$2</code></pre>'
-      )
-      // Inline code
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
-      // Bold
-      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      // Italic
-      .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-      // Headers
-      .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-      .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-      .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-      // Unordered lists
-      .replace(/^[*-] (.+)$/gm, "<li>$1</li>")
-      .replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>")
-      // Ordered lists
-      .replace(/^\d+\. (.+)$/gm, "<li>$1</li>")
-      // Tables (simple)
-      .replace(/\|(.+)\|/g, (match) => {
-        const cells = match
-          .split("|")
-          .filter(Boolean)
-          .map((c) => c.trim());
-        if (cells.every((c) => /^-+$/.test(c))) return "";
-        return (
-          "<tr>" + cells.map((c) => `<td>${c}</td>`).join("") + "</tr>"
-        );
-      })
-      // Line breaks
-      .replace(/\n\n/g, "</p><p>")
-      .replace(/\n/g, "<br/>")
-      // Wrap in paragraph if not already wrapped
-      .replace(/^(?!<[huptol])/i, "<p>")
-      .replace(/(?<![>])$/i, "</p>")
   );
 }

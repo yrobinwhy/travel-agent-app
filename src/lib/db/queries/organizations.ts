@@ -134,7 +134,10 @@ export async function deleteInvite(formData: FormData) {
     throw new Error("Only owners and admins can delete invites");
   }
 
-  await db.delete(orgInvites).where(eq(orgInvites.id, inviteId));
+  // Verify invite belongs to this org (prevent cross-org IDOR)
+  await db
+    .delete(orgInvites)
+    .where(and(eq(orgInvites.id, inviteId), eq(orgInvites.orgId, orgId)));
   revalidatePath("/admin");
 }
 

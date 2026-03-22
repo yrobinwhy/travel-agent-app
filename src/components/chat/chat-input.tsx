@@ -49,6 +49,7 @@ export function ChatInput({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             rows={1}
+            aria-label="Message the travel concierge"
             className="flex-1 resize-none bg-transparent px-2 py-1.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none min-h-[36px] max-h-[200px]"
             disabled={isLoading}
           />
