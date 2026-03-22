@@ -174,3 +174,50 @@ export async function GET(request: Request) {
   // Return newest first
   return Response.json({ conversations: convs.reverse() });
 }
+
+// DELETE: Delete a conversation or all conversations
+export async function DELETE(request: Request) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const convId = searchParams.get("conversationId");
+  const all = searchParams.get("all");
+
+  if (all === "true") {
+    // Delete all conversations for this user
+    // Messages cascade-delete via FK
+    const userConvs = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(eq(conversations.userId, session.user.id));
+
+    for (const conv of userConvs) {
+      await db.delete(messages).where(eq(messages.conversationId, conv.id));
+      await db.delete(conversations).where(eq(conversations.id, conv.id));
+    }
+
+    return Response.json({ deleted: userConvs.length });
+  }
+
+  if (convId) {
+    // Verify ownership
+    const [conv] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, convId));
+
+    if (!conv || conv.userId !== session.user.id) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+
+    await db.delete(messages).where(eq(messages.conversationId, convId));
+    await db.delete(conversations).where(eq(conversations.id, convId));
+
+    return Response.json({ deleted: 1 });
+  }
+
+  return Response.json({ error: "Provide conversationId or all=true" }, { status: 400 });
+}
