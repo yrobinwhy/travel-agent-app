@@ -1,20 +1,16 @@
+import { ChatPanel } from "@/components/chat/chat-panel";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 
 export default function ChatPage() {
   return (
-    <>
-      <header className="flex h-14 items-center gap-4 border-b px-6">
+    <div className="flex flex-col h-[calc(100vh-0px)]">
+      <header className="flex h-12 items-center gap-4 border-b px-4 flex-shrink-0">
         <SidebarTrigger />
-        <Separator orientation="vertical" className="h-6" />
-        <h1 className="text-lg font-semibold">Chat</h1>
+        <Separator orientation="vertical" className="h-5" />
+        <h1 className="text-sm font-semibold">Travel Concierge</h1>
       </header>
-      <div className="flex flex-1 items-center justify-center p-6">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold mb-2">Chat</h2>
-          <p className="text-muted-foreground">Your AI travel concierge. Start a conversation to plan your next trip.</p>
-        </div>
-      </div>
-    </>
+      <ChatPanel />
+    </div>
   );
 }
