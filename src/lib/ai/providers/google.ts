@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import type {
   LLMProvider,
   CompletionOptions,
@@ -6,10 +5,19 @@ import type {
   StreamChunk,
 } from "./types";
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
+let _genAI: InstanceType<typeof import("@google/generative-ai").GoogleGenerativeAI> | null = null;
+
+async function getGenAI() {
+  if (!_genAI) {
+    const { GoogleGenerativeAI } = await import("@google/generative-ai");
+    _genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
+  }
+  return _genAI;
+}
 
 export const googleProvider: LLMProvider = {
   async chat(options: CompletionOptions): Promise<CompletionResult> {
+    const genAI = await getGenAI();
     const { model, messages, systemPrompt, maxTokens, temperature } = options;
 
     const geminiModel = genAI.getGenerativeModel({
@@ -21,7 +29,6 @@ export const googleProvider: LLMProvider = {
       },
     });
 
-    // Convert to Gemini format
     const history = messages.slice(0, -1).map((m) => ({
       role: m.role === "assistant" ? "model" : ("user" as const),
       parts: [{ text: m.content }],
@@ -45,6 +52,7 @@ export const googleProvider: LLMProvider = {
   async *chatStream(
     options: CompletionOptions
   ): AsyncGenerator<StreamChunk, void, unknown> {
+    const genAI = await getGenAI();
     const { model, messages, systemPrompt, maxTokens, temperature } = options;
 
     const geminiModel = genAI.getGenerativeModel({

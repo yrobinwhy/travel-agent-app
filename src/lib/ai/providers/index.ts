@@ -1,16 +1,18 @@
-import { anthropicProvider } from "./anthropic";
-import { googleProvider } from "./google";
 import type { LLMProvider, ModelConfig } from "./types";
 
 export { AVAILABLE_MODELS, DEFAULT_MODEL_ID, getModelById, getModelsByProvider } from "./types";
 export type { ChatMessage, ModelConfig, StreamChunk, CompletionOptions, CompletionResult, LLMProvider } from "./types";
 
-export function getProvider(model: ModelConfig): LLMProvider {
+export async function getProvider(model: ModelConfig): Promise<LLMProvider> {
   switch (model.provider) {
-    case "anthropic":
+    case "anthropic": {
+      const { anthropicProvider } = await import("./anthropic");
       return anthropicProvider;
-    case "google":
+    }
+    case "google": {
+      const { googleProvider } = await import("./google");
       return googleProvider;
+    }
     case "openai":
       throw new Error("OpenAI provider not yet configured. Add your API key in settings.");
     default:

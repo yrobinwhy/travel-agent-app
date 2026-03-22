@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid model" }, { status: 400 });
   }
 
-  const provider = getProvider(model);
+  const provider = await getProvider(model);
 
   // Get or create conversation
   let convId = conversationId;

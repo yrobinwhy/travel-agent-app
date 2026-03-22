@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type {
   LLMProvider,
   CompletionOptions,
@@ -6,12 +5,21 @@ import type {
   StreamChunk,
 } from "./types";
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+let _client: InstanceType<typeof import("@anthropic-ai/sdk").default> | null = null;
+
+async function getClient() {
+  if (!_client) {
+    const Anthropic = (await import("@anthropic-ai/sdk")).default;
+    _client = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY!,
+    });
+  }
+  return _client;
+}
 
 export const anthropicProvider: LLMProvider = {
   async chat(options: CompletionOptions): Promise<CompletionResult> {
+    const client = await getClient();
     const { model, messages, systemPrompt, maxTokens, temperature } = options;
 
     const anthropicMessages = messages
@@ -43,6 +51,7 @@ export const anthropicProvider: LLMProvider = {
   async *chatStream(
     options: CompletionOptions
   ): AsyncGenerator<StreamChunk, void, unknown> {
+    const client = await getClient();
     const { model, messages, systemPrompt, maxTokens, temperature } = options;
 
     const anthropicMessages = messages
