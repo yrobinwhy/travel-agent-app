@@ -129,52 +129,46 @@ export default async function DashboardPage() {
           </Card>
         </div>
 
-        {/* Setup checklist */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Get Set Up</CardTitle>
-            <CardDescription>
-              Complete these steps to unlock the full power of TravelAgent Pro.
+        {/* Optional setup — de-emphasized */}
+        <Card className="border-dashed">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Optional: Quick Setup</CardTitle>
+            <CardDescription className="text-xs">
+              Most of this is handled automatically during your first booking. Set up only what you want to configure ahead of time.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 stagger-fade-in">
+            <div className="space-y-1.5 stagger-fade-in">
               {[
                 {
-                  label: "Add your frequent flyer programs",
-                  href: "/points",
-                  icon: Plane,
-                  color: "text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 dark:bg-indigo-400/10",
-                },
-                {
-                  label: "Add your credit cards",
-                  href: "/cards",
-                  icon: Star,
-                  color: "text-violet-600 dark:text-violet-400 bg-violet-500/10 dark:bg-violet-400/10",
-                },
-                {
-                  label: "Set your travel preferences",
+                  label: "Set travel preferences (home airport, cabin class)",
                   href: "/settings",
                   icon: TrendingUp,
                   color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-400/10",
                 },
                 {
-                  label: "Set up notifications",
+                  label: "Configure notifications",
                   href: "/settings",
                   icon: Bell,
                   color: "text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-400/10",
+                },
+                {
+                  label: "Manage loyalty programs & cards",
+                  href: "/points",
+                  icon: Star,
+                  color: "text-violet-600 dark:text-violet-400 bg-violet-500/10 dark:bg-violet-400/10",
                 },
               ].map((step) => (
                 <Link
                   key={step.label}
                   href={step.href}
-                  className="group flex items-center gap-3 rounded-lg border p-3 transition-premium hover:bg-accent hover:border-primary/20"
+                  className="group flex items-center gap-2.5 rounded-lg border border-dashed p-2.5 transition-premium hover:bg-accent hover:border-primary/20"
                 >
-                  <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", step.color)}>
-                    <step.icon className="h-4 w-4" />
+                  <div className={cn("flex h-7 w-7 items-center justify-center rounded-md", step.color)}>
+                    <step.icon className="h-3.5 w-3.5" />
                   </div>
-                  <span className="text-sm font-medium">{step.label}</span>
-                  <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 group-hover:translate-x-0.5" />
+                  <span className="text-xs">{step.label}</span>
+                  <ArrowRight className="ml-auto h-3.5 w-3.5 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 group-hover:translate-x-0.5" />
                 </Link>
               ))}
             </div>
