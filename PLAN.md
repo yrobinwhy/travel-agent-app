@@ -183,6 +183,47 @@ and can return fares in different currencies. For the full POS override (which c
 the actual fare filing), the Enterprise tier API is needed. We start with currency +
 SerpAPI cross-market search, and upgrade to Enterprise Amadeus when volume justifies it.
 
+### Nearby Airport & Creative Routing Engine
+
+For every search, the system automatically expands the search to nearby airports and evaluates positioning flight combos.
+
+```
+For each flight search:
+1. Identify alternate airports within configurable radius (default: 150mi / 250km):
+   a. Origin alternates: e.g., SFO search also checks OAK, SJC
+   b. Destination alternates: e.g., LAS search also checks PHX, ONT
+   c. Use IATA metropolitan area codes when available (NYC = JFK/EWR/LGA)
+
+2. Run standard search across all origin × destination pairs (parallel)
+
+3. For any alternate airport result that's significantly cheaper ($200+ savings default):
+   a. Search for positioning flight: user's home → alternate airport
+   b. Calculate: positioning flight + main flight vs. direct from home
+   c. Factor in: extra time, layover comfort, luggage re-check rules
+
+4. Multi-leg positioning evaluation:
+   a. If BCN→LHR→LAS = $650 total (incl. BCN→LHR leg) vs LHR→LAS direct = $1,200
+   b. Present: "Save $550 by adding BCN→LHR positioning leg. Adds 3hrs, overnight in Barcelona optional."
+
+5. Open-jaw evaluation:
+   a. For multi-city trips, compare: A→B + C→A vs. A→B→A + B→C→B
+   b. Present cheapest combination with clear routing
+
+6. One-way combo check:
+   a. Compare round-trip on single airline vs. two one-ways on different airlines
+   b. Especially useful for routes where outbound/return demand is asymmetric
+```
+
+Database additions:
+```sql
+nearby_airports (
+  id, airport_code, nearby_code,
+  distance_miles, same_metro_area,
+  ground_transport_options_json,  -- "Eurostar 2h15m", "Bus $15 1h"
+  created_at
+)
+```
+
 ### Smart Pricing Engine (Economy + Upgrade Strategy)
 
 For every flight search, the system doesn't just compare ticket prices at face value. It evaluates hybrid strategies:
@@ -279,6 +320,52 @@ Database additions:
 booking_fare_rules (id, booking_id, fare_class, change_fee, cancel_policy[full_refund|credit|partial|none], same_day_change, upgrade_eligible, rules_raw_json)
 price_watches (id, booking_id, route, dates, cabin_class, original_price, current_best, last_checked, savings_available, alert_sent)
 airline_credits (id, user_id, airline, credit_amount, currency, credit_code_enc, issued_date, expiry_date, used_amount, status[active|used|expired], notes)
+```
+
+---
+
+## 3b. Agent Email & Chat Layer
+
+An autonomous AI agent that monitors communications and proactively manages travel context.
+
+### Email Agent Pipeline
+```
+Gmail API (watch mode) → New email arrives
+    │
+    ▼
+Claude Haiku 4.5: Classify email
+  - Is this travel-related? (booking confirmation, schedule change, meeting invite with location, etc.)
+  - Classification: booking_confirmation | schedule_change | meeting_invite | travel_request | not_travel
+    │
+    ▼
+If travel-related:
+  ├── booking_confirmation → Parse details, match to existing trip or create new one
+  ├── schedule_change → Update itinerary, alert user if conflicts created
+  ├── meeting_invite → Extract location, suggest flight/hotel search if different city
+  ├── travel_request → Surface as suggested action ("Your boss asked about the NYC trip — want me to search?")
+  └── duplicate_check → Cross-reference with existing bookings to prevent double-booking
+```
+
+### Architecture Considerations
+- Uses Gmail Push Notifications (Cloud Pub/Sub) for real-time email watching
+- Background worker on Railway processes incoming emails
+- All email content processed by LLM stays server-side, never stored in raw form
+- User must explicitly grant Gmail read permission (OAuth scope: gmail.readonly)
+- Agent actions are always SUGGESTIONS — never auto-books without confirmation
+- Future: Slack/Teams webhook integration for work chat monitoring
+
+### Database additions
+```sql
+email_agent_events (
+  id, user_id,
+  source[gmail|slack|teams],
+  source_message_id,
+  classification,  -- booking_confirmation, schedule_change, meeting_invite, etc.
+  extracted_data_json,  -- parsed travel details
+  action_taken,  -- created_trip, updated_booking, suggested_search, ignored
+  trip_id[nullable], booking_id[nullable],
+  processed_at, created_at
+)
 ```
 
 ---
@@ -856,6 +943,45 @@ travel_documents (
 )
 
 -- ============================================
+-- NEARBY AIRPORTS & CREATIVE ROUTING
+-- ============================================
+nearby_airports (
+  id, airport_code, nearby_code,
+  distance_miles, same_metro_area,
+  ground_transport_options_json,
+  created_at
+)
+
+-- ============================================
+-- EMAIL AGENT
+-- ============================================
+email_agent_events (
+  id, user_id,
+  source[gmail|slack|teams],
+  source_message_id,
+  classification,
+  extracted_data_json,
+  action_taken,
+  trip_id[nullable], booking_id[nullable],
+  processed_at, created_at
+)
+
+-- ============================================
+-- TRAVEL SPEND ANALYTICS (materialized from bookings + expenses)
+-- ============================================
+travel_analytics_snapshots (
+  id, user_id, org_id[nullable],
+  period_start, period_end,
+  total_spend, spend_by_category_json,
+  total_points_earned, total_points_redeemed,
+  avg_cpp_achieved,
+  total_savings,  -- from POS arbitrage, smart pricing, rebookings
+  carbon_kg_estimate,
+  top_routes_json, top_airlines_json, top_hotels_json,
+  created_at
+)
+
+-- ============================================
 -- AUDIT LOG
 -- ============================================
 audit_log (id, user_id, action, resource_type, resource_id, details_json, ip_address, created_at)
@@ -983,10 +1109,14 @@ travel-agent-app/
 - [ ] Hotel search (Amadeus Hotel Search API)
 - [ ] Multi-market POS search: parallel queries across origin, destination, and known cheap markets
 - [ ] POS arbitrage: side-by-side market pricing, FX conversion, FTF flag per card
-- [ ] Flight + hotel results normalization + deduplication (across markets)
+- [ ] Nearby airport search: auto-expand to alternate airports within radius
+- [ ] Positioning flight combo evaluation (cheap alternate origin + positioning leg)
+- [ ] Open-jaw and one-way combo pricing comparison
+- [ ] Flight + hotel results normalization + deduplication (across markets + airports)
 - [ ] Gemini Flash for structured data extraction
 - [ ] Fare class + fare rules parsing (refundable, changeable, upgrade-eligible)
 - [ ] Flexibility scoring (0-100) per flight option
+- [ ] Baggage allowance display per fare class + FF status
 - [ ] LLM-powered ranking (value, schedule, stops, points, flexibility, cheapest market modes)
 - [ ] POS market intelligence table: learn which markets are cheapest per route over time
 
@@ -1045,11 +1175,14 @@ travel-agent-app/
 - [ ] PNR management (store, display, link to itinerary)
 - [ ] Booking confirmation flow + fare rules storage
 
-### Phase 10 — Integrations (Week 18-19)
+### Phase 10 — Integrations & Agent Layer (Week 18-19)
 - [ ] Google Calendar OAuth + auto-create/update events
 - [ ] Apple Calendar: subscribe-able .ics feed per trip
 - [ ] Flighty deep link generation
 - [ ] Gmail API: parse confirmation emails → auto-import bookings
+- [ ] Email Agent: Gmail push notifications → classify → auto-import/suggest
+- [ ] Proactive trip suggestions from meeting invites in different cities
+- [ ] Duplicate booking detection across org members
 - [ ] Email notifications to passengers
 - [ ] Apple Wallet .pkpass generation
 - [ ] Price alert system (Railway background jobs)
@@ -1066,10 +1199,15 @@ travel-agent-app/
 - [ ] Expense export: CSV + PDF for reimbursement
 - [ ] Currency conversion at date-of-purchase rates
 
-### Phase 12 — Polish & Scale (Week 21-22)
+### Phase 12 — Polish, Analytics & Scale (Week 21-22)
 - [ ] Audit log viewer for admins
 - [ ] Usage + cost dashboard (API spend per model)
+- [ ] Travel spend analytics dashboard (YoY spend, savings, CPP, carbon)
+- [ ] Quick re-book: "Book again" button on completed trips
+- [ ] Emergency assistance mode (contextual emergency contacts, airline priority lines)
+- [ ] Currency & tipping guide per destination
 - [ ] Seat selection intelligence (aircraft-specific maps + recommendations)
+- [ ] PWA setup: service worker + offline itinerary caching
 - [ ] Mobile-responsive optimization
 - [ ] Performance: edge caching, lazy loading, optimistic UI
 - [ ] Rate limiting + abuse prevention
@@ -1089,6 +1227,10 @@ travel-agent-app/
 - [ ] Voice input for chat (Web Speech API)
 - [ ] Collaborative trip planning (multiple users editing same trip via chat)
 - [ ] Auto-generated packing lists (destination, weather, duration, activities)
+- [ ] Slack / Teams integration for agent chat monitoring
+- [ ] Group booking coordinator (multi-passenger, seat coordination, split payment)
+- [ ] eSIM recommendations per destination
+- [ ] Train/bus alternatives for short positioning legs (Eurostar, etc.)
 
 ---
 
@@ -1131,6 +1273,10 @@ travel-agent-app/
 15. **Global pricing** — same flight searched across multiple country markets; POS arbitrage is a first-class optimization mode
 16. **Full travel lifecycle** — pre-trip (requirements, prep), during-trip (alerts, status), post-trip (expenses, ratings, history) — not just search and book
 17. **Notification-driven** — proactive alerts (price drops, check-in, gate changes, expiring credits) keep users informed without requiring them to open the app
+18. **Airport-agnostic** — every search auto-expands to nearby airports and evaluates positioning flights; users shouldn't be locked to one airport
+19. **Agent-first communication** — email/chat monitoring agent proactively manages travel context; users shouldn't have to manually enter every trip
+20. **Offline-capable** — PWA with service worker ensures itineraries are accessible anywhere, even without connectivity
+21. **Analytics-driven improvement** — track savings, CPP achieved, and spending patterns to continuously demonstrate and improve value delivery
 
 ---
 

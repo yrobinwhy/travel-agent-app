@@ -221,7 +221,105 @@ For business travelers, tracking spend is critical.
 - **Receipt storage**: Attach photos of receipts to individual bookings (stored encrypted)
 - **Currency conversion**: All foreign-currency expenses shown in both original currency and your home currency at the exchange rate on the date of purchase
 
-### 24. Notifications & Smart Alerts
+### 24. Nearby Airport & Creative Routing
+
+Don't let geography limit your deals. The app automatically searches alternate airports near your origin and destination to find cheaper or better-timed flights — including multi-leg positioning flights.
+
+- **Alternate airport search**: For every search, the system checks airports within a configurable radius (default: 150 miles / 250 km) of both your origin and destination. *"JFK→DEL is $2,400 but EWR→DEL is $1,800 — same metro area, save $600."*
+- **Positioning flight combos**: When a cheaper fare exists from a nearby city, the app evaluates whether adding a short positioning flight still saves money. *"LHR→LAS direct is $1,200. BCN→LHR→LAS is $650 total including the BCN→LHR leg — save $550 and get a night in Barcelona."*
+- **Hidden-city ticketing awareness**: Flags opportunities where a connecting flight through your destination is cheaper than flying direct (with appropriate warnings about risks and airline policies)
+- **Multi-city / open-jaw optimization**: Automatically evaluates whether A→B + C→A is cheaper than A→B→A when your trip involves multiple cities
+- **Train/bus alternatives**: For short positioning legs, suggests ground transport when it's faster or cheaper than flying (e.g., London→Paris by Eurostar vs. flight)
+- **Nearby airport intelligence**: Over time, learns which alternate airports consistently offer savings for your routes
+
+### 25. Agent Email & Chat Layer
+
+An AI agent that monitors your email and messaging apps to proactively enhance your travel experience — so you don't have to manually enter every trip detail.
+
+- **Email monitoring**: Connects to Gmail and watches for travel-related content — booking confirmations, meeting invitations with locations, itinerary changes from airlines, travel-related requests from colleagues
+- **Auto-import bookings**: When a confirmation email arrives, the agent parses it and auto-creates or updates the relevant trip — no manual data entry
+- **Proactive trip creation**: Detects when you receive a meeting invite in another city and proactively suggests: *"You have a meeting in Chicago on April 5. Want me to search flights and hotels?"*
+- **Change detection**: When an airline sends a schedule change email, the agent reads it, updates your itinerary, and alerts you if the change creates a conflict or tight connection
+- **Colleague coordination**: If integrated with Slack or Teams (future), the agent can detect when a colleague mentions travel plans and suggest group coordination
+- **Smart context extraction**: Uses LLM to understand natural language in emails — *"Let's meet in London next month"* triggers a search suggestion even though no dates or flights are mentioned
+- **Duplicate detection**: When a booking email arrives, checks if it matches an existing trip or if a team member already booked the same route — avoids double-bookings and finds coordination opportunities
+
+### 26. Group Booking Coordinator
+
+When traveling with family or colleagues, coordinating multiple passengers adds complexity. The app handles it natively.
+
+- **Multi-passenger search**: Search flights for 2-8 passengers simultaneously, with different loyalty programs and preferences per person
+- **Seat coordination**: When booking for a group, automatically requests adjacent seats and tracks seat assignments across all passengers
+- **Split payment support**: Different passengers can use different credit cards or points programs for the same booking
+- **Per-passenger loyalty tracking**: Each passenger's frequent flyer number is attached to their segment, ensuring everyone earns miles on their own account
+- **Group fare detection**: Identifies when group fares (10+ passengers) offer better pricing than individual bookings
+- **Family-friendly features**: Flags flights and hotels with family-specific perks (kids fly free promotions, family rooms, kids' clubs)
+
+### 27. Offline Itinerary Access (PWA)
+
+Your itinerary should be available even without internet — critical when traveling internationally.
+
+- **Progressive Web App**: Install the app on your home screen for app-like access without downloading from an app store
+- **Offline caching**: All active trip itineraries, confirmation numbers, addresses, and contact info cached locally via service worker
+- **Sync when online**: Any changes made while offline (notes, ratings) sync automatically when connectivity returns
+- **Critical info always available**: Even in airplane mode or areas with no signal, your full itinerary is accessible
+
+### 28. Travel Spend Analytics Dashboard
+
+Understand your travel patterns and see how much value the app is delivering.
+
+- **Year-over-year spend**: Track total travel spend by category (flights, hotels, meals, transport) across personal and business
+- **Points efficiency**: Average cents-per-point achieved across all redemptions — see if you're improving over time
+- **Money saved**: Running total of savings from POS arbitrage, smart pricing (economy + upgrade), price drop rebookings, and points optimization vs. retail pricing
+- **Miles & points earned**: Track earning velocity across all loyalty programs
+- **Route patterns**: Visualize your most-traveled routes, favorite airlines, and preferred hotels
+- **Carbon footprint**: Estimated CO₂ emissions per trip and year-to-date, with optional carbon offset suggestions
+- **Organization reporting**: Admins see aggregate spend and savings across all team members
+
+### 29. Quick Re-book
+
+For recurring business travel, one-click re-booking with current pricing.
+
+- **"Book again" button**: On any completed trip, one click copies the itinerary structure and searches for current pricing on new dates
+- **Template auto-suggestions**: If you fly SFO→NRT quarterly, the app proactively suggests rebooking as the next quarter approaches
+- **Price comparison vs. last time**: Shows how current pricing compares to what you paid previously
+
+### 30. Emergency Assistance Mode
+
+When things go wrong during a trip, get instant access to everything you need.
+
+- **One-tap emergency panel**: Contextual to your current trip location — shows local emergency numbers (police, ambulance), nearest hospital, embassy/consulate contact, and your travel insurance claim number
+- **Airline priority contact**: Instant access to the phone number for your status level at the airline you're flying — no digging through menus
+- **Rebooking assistance**: If your flight is cancelled, immediately surfaces alternative flights with availability and guides you through rebooking
+- **Document access**: Quick access to your passport info, insurance policy, and emergency contacts — even offline
+
+### 31. Currency & Tipping Guide
+
+Practical destination intelligence that saves you money and awkwardness.
+
+- **Local currency info**: For each destination, shows the local currency, current exchange rate, and which of your credit cards offers the best FX rate (factoring in foreign transaction fees)
+- **ATM guidance**: Whether to withdraw local currency at destination or exchange before departure, typical ATM fees, and whether your cards reimburse ATM fees
+- **Tipping customs**: Country-specific tipping norms for restaurants, hotels, taxis, and tour guides — so you don't over-tip or under-tip
+- **Payment culture**: Whether cash or card is preferred, contactless payment availability, and any local payment apps to know about
+
+### 32. Baggage Allowance Tracker
+
+Never get surprised by baggage fees again.
+
+- **Per-booking baggage info**: For every flight, shows exactly what bags are included based on your fare class and frequent flyer status
+- **Inter-airline baggage rules**: When connecting between different airlines, flags if baggage allowances differ and what extra costs to expect
+- **Carry-on vs. checked**: Clear breakdown of size/weight limits per airline and route
+- **Status benefits**: Factors in your elite status benefits (e.g., United 1K gets 2 free checked bags) and credit card perks (e.g., some cards include free checked bags on specific airlines)
+
+### 33. Multi-Leg / Open-Jaw Optimization
+
+Not every trip is a simple round-trip. The app natively handles complex routing.
+
+- **Open-jaw pricing**: Automatically evaluates A→B, C→A pricing against A→B→A when your trip involves visiting multiple cities
+- **Multi-city itineraries**: Plan trips that visit 3-5 cities with the AI optimizing the order to minimize cost and backtracking
+- **One-way combo pricing**: Sometimes two one-way tickets on different airlines beat a round-trip on one airline — the app checks both
+
+### 34. Notifications & Smart Alerts
 
 Stay informed without being overwhelmed.
 
@@ -291,6 +389,8 @@ These are on the roadmap and the system is designed to support them:
 - **Travel insurance comparison** — Compare and recommend travel insurance policies based on trip value, destination risk, and medical coverage needs
 - **Lounge finder** — Based on your cards and status, show which lounges you can access at every airport in your itinerary, with hours and reviews
 - **Destination briefing** — AI-generated briefing for each destination: weather forecast, local customs, tipping norms, emergency numbers, embassy contact, SIM card / eSIM options, power adapter needs
+- **Slack / Teams integration** — Agent monitors work messaging for travel-related conversations and proactively offers to coordinate
+- **eSIM recommendations** — Based on destination, suggest the best eSIM provider and plan for data connectivity abroad
 
 ---
 
