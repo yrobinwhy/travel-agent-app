@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { buttonVariants } from "@/components/ui/button";
 import {
   MessageSquare,
   Plane,
@@ -73,7 +72,7 @@ export default async function DashboardPage() {
               </CardDescription>
               <Link
                 href="/chat"
-                className={cn(buttonVariants({ size: "sm" }))}
+                className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-premium hover:bg-primary/90"
               >
                 New Conversation
               </Link>
@@ -95,9 +94,7 @@ export default async function DashboardPage() {
               </CardDescription>
               <Link
                 href="/trips"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" })
-                )}
+                className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium shadow-sm transition-premium hover:bg-accent hover:text-accent-foreground"
               >
                 View All Trips
               </Link>
@@ -119,9 +116,7 @@ export default async function DashboardPage() {
               </CardDescription>
               <Link
                 href="/points"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" })
-                )}
+                className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium shadow-sm transition-premium hover:bg-accent hover:text-accent-foreground"
               >
                 Manage Points
               </Link>
