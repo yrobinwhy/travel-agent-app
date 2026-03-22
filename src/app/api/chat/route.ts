@@ -7,10 +7,17 @@ import {
   DEFAULT_MODEL_ID,
 } from "@/lib/ai/providers";
 import { TRAVEL_CONCIERGE_SYSTEM_PROMPT } from "@/lib/ai/prompts/system";
-import { FLIGHT_SEARCH_TOOL, parseToolCall } from "@/lib/ai/tools/flight-search";
+import {
+  FLIGHT_SEARCH_TOOL,
+  parseToolCall,
+} from "@/lib/ai/tools/flight-search";
 import { searchFlights } from "@/lib/flights";
+import type { FlightSearchResult } from "@/lib/flights";
 import { eq, asc } from "drizzle-orm";
 import type { ChatMessage } from "@/lib/ai/providers";
+
+// Vercel serverless function config — extend timeout for flight searches
+export const maxDuration = 60; // seconds
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -73,11 +80,9 @@ export async function POST(request: Request) {
     content: m.content,
   }));
 
-  // Only provide tools for Claude (Anthropic) — Gemini uses grounded search natively
+  // Only provide tools for Claude (Anthropic)
   const tools =
-    model.provider === "anthropic"
-      ? [FLIGHT_SEARCH_TOOL]
-      : undefined;
+    model.provider === "anthropic" ? [FLIGHT_SEARCH_TOOL] : undefined;
 
   // Stream response
   const encoder = new TextEncoder();
@@ -85,13 +90,14 @@ export async function POST(request: Request) {
     async start(controller) {
       let fullContent = "";
 
-      try {
-        // Send conversation ID first
+      const send = (data: Record<string, unknown>) => {
         controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ type: "meta", conversationId: convId })}\n\n`
-          )
+          encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
         );
+      };
+
+      try {
+        send({ type: "meta", conversationId: convId });
 
         const gen = provider.chatStream({
           model,
@@ -101,190 +107,193 @@ export async function POST(request: Request) {
           tools,
         });
 
+        // Collect all tool calls before processing
+        const toolCalls: Array<{
+          toolName: string;
+          toolInput: Record<string, unknown>;
+        }> = [];
+        let hasToolCalls = false;
+
         for await (const chunk of gen) {
-          if (chunk.type === "tool_call") {
-            // LLM wants to call a tool
-            const toolCall = JSON.parse(chunk.content);
+          if (chunk.type === ("tool_call" as string)) {
+            hasToolCalls = true;
+            const parsed = JSON.parse(chunk.content);
+            toolCalls.push({
+              toolName: parsed.toolName,
+              toolInput: parsed.toolInput,
+            });
+          } else if (chunk.type === "text") {
+            fullContent += chunk.content;
+            send({ type: "text", content: chunk.content });
+          } else if (chunk.type === "error") {
+            send({ type: "error", content: chunk.content });
+          } else if (chunk.type === "done") {
+            // Will handle below
+          }
+        }
 
-            if (toolCall.toolName === "search_flights") {
-              // Notify user that search is happening
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({
-                    type: "status",
-                    content: "Searching flights across multiple providers...",
-                  })}\n\n`
-                )
-              );
+        if (hasToolCalls) {
+          // Process all flight search tool calls in parallel
+          const flightCalls = toolCalls.filter(
+            (tc) => tc.toolName === "search_flights"
+          );
 
-              // Execute flight search
-              const searchParams = parseToolCall(
-                toolCall.toolInput as Record<string, unknown>
-              );
-              console.log("[FLIGHT SEARCH] Params:", JSON.stringify(searchParams));
+          if (flightCalls.length > 0) {
+            send({
+              type: "status",
+              content: `Searching ${flightCalls.length > 1 ? `${flightCalls.length} airports` : "flights"} across multiple providers...`,
+            });
 
-              let results;
+            // Execute all searches in parallel
+            const searchPromises = flightCalls.map(async (tc) => {
+              const params = parseToolCall(tc.toolInput);
+              console.log("[FLIGHT SEARCH] Params:", JSON.stringify(params));
               try {
-                results = await searchFlights(searchParams);
-                console.log("[FLIGHT SEARCH] Results:", results.offers.length, "offers from", results.providers.join(", "));
-                if (results.errors?.length) {
-                  console.error("[FLIGHT SEARCH] Errors:", JSON.stringify(results.errors));
-                }
-              } catch (searchError) {
-                console.error("[FLIGHT SEARCH] Fatal error:", searchError);
-                results = {
-                  params: searchParams,
+                return await searchFlights(params);
+              } catch (err) {
+                console.error("[FLIGHT SEARCH] Error:", err);
+                return {
+                  params,
                   offers: [],
                   searchedAt: new Date().toISOString(),
                   providers: [],
-                  errors: [{ provider: "all", error: searchError instanceof Error ? searchError.message : "Search failed" }],
-                };
+                  errors: [
+                    {
+                      provider: "all",
+                      error:
+                        err instanceof Error ? err.message : "Search failed",
+                    },
+                  ],
+                } as FlightSearchResult;
               }
+            });
 
-              // Send flight results as structured data
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({
-                    type: "flight_results",
-                    content: JSON.stringify(results),
-                  })}\n\n`
-                )
-              );
+            const allResults = await Promise.all(searchPromises);
 
-              // Now ask the LLM to summarize the results
-              const summaryMessages: ChatMessage[] = [
-                ...chatMessages,
-                {
-                  role: "assistant" as const,
-                  content: `I searched for flights and found ${results.offers.length} options. Here are the results: ${JSON.stringify(
-                    results.offers.slice(0, 5).map((o) => ({
-                      airlines: o.airlines.join(", "),
-                      price: `${o.currency} ${o.totalPrice}`,
-                      duration: o.totalDuration,
-                      stops: o.stops,
-                      valueScore: o.valueScore,
-                      valueNotes: o.valueNotes,
-                      refundable: o.refundable,
-                      changeable: o.changeable,
-                      bookable: o.bookable,
-                      outbound: o.outbound.map((s) => ({
-                        flight: s.flightNumber,
-                        from: `${s.originName} (${s.origin})`,
-                        to: `${s.destinationName} (${s.destination})`,
-                        depart: s.departureTime,
-                        arrive: s.arrivalTime,
-                        cabin: s.cabinClass,
-                      })),
-                    }))
-                  )}${
-                    results.errors?.length
-                      ? `\n\nSome providers had errors: ${results.errors
-                          .map((e) => `${e.provider}: ${e.error}`)
-                          .join(", ")}`
-                      : ""
-                  }`,
-                },
-                {
-                  role: "user" as const,
-                  content:
-                    "Now present these flight results to me in a clear, concise format. Highlight the best value option and explain why. Include prices, airlines, times, and number of stops. If you have recommendations based on my preferences, share them. Keep it conversational.",
-                },
-              ];
+            // Merge results from multiple searches
+            const mergedResult: FlightSearchResult = {
+              params: allResults[0].params,
+              offers: allResults.flatMap((r) => r.offers),
+              searchedAt: new Date().toISOString(),
+              providers: [
+                ...new Set(allResults.flatMap((r) => r.providers)),
+              ],
+              errors: allResults.flatMap((r) => r.errors || []),
+            };
 
-              // Stream the summary
-              const summaryGen = provider.chatStream({
-                model,
-                messages: summaryMessages,
-                systemPrompt: TRAVEL_CONCIERGE_SYSTEM_PROMPT,
-                stream: true,
-                // No tools for summary — just text
-              });
+            // Sort merged offers by value
+            mergedResult.offers.sort(
+              (a, b) => (b.valueScore || 0) - (a.valueScore || 0)
+            );
 
-              for await (const summaryChunk of summaryGen) {
-                if (summaryChunk.type === "text") {
-                  fullContent += summaryChunk.content;
-                  controller.enqueue(
-                    encoder.encode(
-                      `data: ${JSON.stringify({
-                        type: "text",
-                        content: summaryChunk.content,
-                      })}\n\n`
-                    )
-                  );
-                }
-              }
+            // Compute metadata
+            const prices = mergedResult.offers
+              .map((o) => o.totalPrice)
+              .filter((p) => p > 0);
+            mergedResult.cheapestPrice = prices.length
+              ? Math.min(...prices)
+              : undefined;
 
-              // Save assistant message with flight data reference
-              await db.insert(messages).values({
-                conversationId: convId!,
+            console.log(
+              "[FLIGHT SEARCH] Merged:",
+              mergedResult.offers.length,
+              "offers from",
+              mergedResult.providers.join(", ")
+            );
+
+            // Send flight results
+            send({
+              type: "flight_results",
+              content: JSON.stringify(mergedResult),
+            });
+
+            // Ask LLM to summarize
+            const topOffers = mergedResult.offers.slice(0, 8).map((o) => ({
+              airlines: o.airlines.join(", "),
+              price: `${o.currency} ${o.totalPrice}`,
+              duration: o.totalDuration,
+              stops: o.stops,
+              valueScore: o.valueScore,
+              valueNotes: o.valueNotes,
+              refundable: o.refundable,
+              changeable: o.changeable,
+              bookable: o.bookable,
+              outbound: o.outbound.map((s) => ({
+                flight: s.flightNumber,
+                from: `${s.originName} (${s.origin})`,
+                to: `${s.destinationName} (${s.destination})`,
+                depart: s.departureTime,
+                arrive: s.arrivalTime,
+                cabin: s.cabinClass,
+              })),
+            }));
+
+            const summaryMessages: ChatMessage[] = [
+              ...chatMessages,
+              {
                 role: "assistant",
-                content: fullContent,
-                modelUsed: model.apiModelId,
-                toolCalls: {
-                  flightSearch: {
-                    params: searchParams,
-                    resultCount: results.offers.length,
-                    providers: results.providers,
-                    cheapest: results.cheapestPrice,
-                  },
-                },
-              });
+                content: `I searched for flights and found ${mergedResult.offers.length} options. Here are the top results: ${JSON.stringify(topOffers)}${
+                  mergedResult.errors?.length
+                    ? `\n\nSome providers had errors: ${mergedResult.errors.map((e) => `${e.provider}: ${e.error}`).join(", ")}`
+                    : ""
+                }`,
+              },
+              {
+                role: "user",
+                content:
+                  "Present these flight results clearly and concisely. Highlight the best value option and explain why. Include prices, airlines, times, and stops. Keep it conversational.",
+              },
+            ];
 
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({
-                    type: "done",
-                    conversationId: convId,
-                  })}\n\n`
-                )
-              );
+            const summaryGen = provider.chatStream({
+              model,
+              messages: summaryMessages,
+              systemPrompt: TRAVEL_CONCIERGE_SYSTEM_PROMPT,
+              stream: true,
+              // No tools for summary
+            });
+
+            for await (const chunk of summaryGen) {
+              if (chunk.type === "text") {
+                fullContent += chunk.content;
+                send({ type: "text", content: chunk.content });
+              }
             }
-          } else if (chunk.type === "text") {
-            fullContent += chunk.content;
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  type: "text",
-                  content: chunk.content,
-                })}\n\n`
-              )
-            );
-          } else if (chunk.type === "error") {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  type: "error",
-                  content: chunk.content,
-                })}\n\n`
-              )
-            );
-          } else if (chunk.type === "done") {
+
             // Save assistant message
             await db.insert(messages).values({
               conversationId: convId!,
               role: "assistant",
               content: fullContent,
               modelUsed: model.apiModelId,
+              toolCalls: {
+                flightSearch: {
+                  searchCount: flightCalls.length,
+                  resultCount: mergedResult.offers.length,
+                  providers: mergedResult.providers,
+                  cheapest: mergedResult.cheapestPrice,
+                },
+              },
             });
 
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  type: "done",
-                  conversationId: convId,
-                })}\n\n`
-              )
-            );
+            send({ type: "done", conversationId: convId });
           }
+        } else {
+          // No tool calls — save the streamed text
+          if (fullContent) {
+            await db.insert(messages).values({
+              conversationId: convId!,
+              role: "assistant",
+              content: fullContent,
+              modelUsed: model.apiModelId,
+            });
+          }
+          send({ type: "done", conversationId: convId });
         }
       } catch (error) {
         const errMsg =
           error instanceof Error ? error.message : "Unknown error";
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ type: "error", content: errMsg })}\n\n`
-          )
-        );
+        send({ type: "error", content: errMsg });
       } finally {
         controller.close();
       }
@@ -311,7 +320,6 @@ export async function GET(request: Request) {
   const convId = searchParams.get("conversationId");
 
   if (convId) {
-    // Load messages for a conversation
     const msgs = await db
       .select()
       .from(messages)
@@ -321,14 +329,12 @@ export async function GET(request: Request) {
     return Response.json({ messages: msgs });
   }
 
-  // List all conversations
   const convs = await db
     .select()
     .from(conversations)
     .where(eq(conversations.userId, session.user.id))
     .orderBy(asc(conversations.createdAt));
 
-  // Return newest first
   return Response.json({ conversations: convs.reverse() });
 }
 
@@ -351,7 +357,9 @@ export async function DELETE(request: Request) {
 
     for (const conv of userConvs) {
       await db.delete(messages).where(eq(messages.conversationId, conv.id));
-      await db.delete(conversations).where(eq(conversations.id, conv.id));
+      await db
+        .delete(conversations)
+        .where(eq(conversations.id, conv.id));
     }
 
     return Response.json({ deleted: userConvs.length });

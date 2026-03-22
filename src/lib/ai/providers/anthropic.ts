@@ -6,9 +6,10 @@ import type {
 } from "./types";
 
 async function getClient() {
-  // Use CLAUDE_API_KEY to avoid collision with shell env ANTHROPIC_API_KEY
-  // Trim to remove any trailing newlines from env var providers
-  const apiKey = (process.env.CLAUDE_API_KEY?.trim()) || (process.env.ANTHROPIC_API_KEY?.trim()) || "";
+  const apiKey =
+    process.env.CLAUDE_API_KEY?.trim() ||
+    process.env.ANTHROPIC_API_KEY?.trim() ||
+    "";
   if (!apiKey) {
     throw new Error("CLAUDE_API_KEY is not set in environment variables");
   }
@@ -73,25 +74,33 @@ export const anthropicProvider: LLMProvider = {
           tools: tools.map((t) => ({
             name: t.name,
             description: t.description,
-            input_schema: t.input_schema as { type: "object"; properties?: Record<string, unknown>; required?: string[] },
+            input_schema: t.input_schema as {
+              type: "object";
+              properties?: Record<string, unknown>;
+              required?: string[];
+            },
           })),
         });
 
-        // Check if model wants to use a tool
-        const toolUseBlock = response.content.find(
+        // Collect ALL tool calls (Claude may return multiple e.g. LHR + LGW)
+        const toolUseBlocks = response.content.filter(
           (b) => b.type === "tool_use"
         );
 
-        if (toolUseBlock && toolUseBlock.type === "tool_use") {
-          // Signal tool call to the chat handler
-          yield {
-            type: "tool_call" as StreamChunk["type"],
-            content: JSON.stringify({
-              toolName: toolUseBlock.name,
-              toolInput: toolUseBlock.input,
-              toolUseId: toolUseBlock.id,
-            }),
-          };
+        if (toolUseBlocks.length > 0) {
+          // Send all tool calls — the chat handler will process them
+          for (const block of toolUseBlocks) {
+            if (block.type === "tool_use") {
+              yield {
+                type: "tool_call" as StreamChunk["type"],
+                content: JSON.stringify({
+                  toolName: block.name,
+                  toolInput: block.input,
+                  toolUseId: block.id,
+                }),
+              };
+            }
+          }
           return;
         }
 
