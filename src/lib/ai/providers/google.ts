@@ -26,6 +26,7 @@ export const googleProvider: LLMProvider = {
         maxOutputTokens: maxTokens || model.maxTokens,
         ...(temperature !== undefined && { temperature }),
       },
+      tools: [{ googleSearch: {} } as any],
     });
 
     const history = messages.slice(0, -1).map((m) => ({
@@ -61,6 +62,7 @@ export const googleProvider: LLMProvider = {
         maxOutputTokens: maxTokens || model.maxTokens,
         ...(temperature !== undefined && { temperature }),
       },
+      tools: [{ googleSearch: {} } as any],
     });
 
     const history = messages.slice(0, -1).map((m) => ({
