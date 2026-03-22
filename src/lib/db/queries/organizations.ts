@@ -115,6 +115,23 @@ export async function createInvite(formData: FormData) {
   revalidatePath("/admin");
 }
 
+export async function getOrgInvites(orgId: string) {
+  const user = await getUser();
+  // Verify user belongs to this org
+  const membership = await db
+    .select()
+    .from(orgMemberships)
+    .where(
+      and(eq(orgMemberships.orgId, orgId), eq(orgMemberships.userId, user.id!))
+    );
+  if (membership.length === 0) throw new Error("Not a member of this org");
+
+  return await db
+    .select()
+    .from(orgInvites)
+    .where(eq(orgInvites.orgId, orgId));
+}
+
 export async function acceptInvite(token: string) {
   const user = await getUser();
 
