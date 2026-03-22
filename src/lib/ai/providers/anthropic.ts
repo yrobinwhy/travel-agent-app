@@ -7,7 +7,8 @@ import type {
 
 async function getClient() {
   // Use CLAUDE_API_KEY to avoid collision with shell env ANTHROPIC_API_KEY
-  const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
+  // Trim to remove any trailing newlines from env var providers
+  const apiKey = (process.env.CLAUDE_API_KEY?.trim()) || (process.env.ANTHROPIC_API_KEY?.trim()) || "";
   if (!apiKey) {
     throw new Error("CLAUDE_API_KEY is not set in environment variables");
   }
