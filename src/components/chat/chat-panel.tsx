@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from "react";
 import { ChatMessage } from "./chat-message";
 import { ChatInput } from "./chat-input";
 import { ModelSelector } from "./model-selector";
 import { DEFAULT_MODEL_ID, AVAILABLE_MODELS } from "@/lib/ai/providers";
+import { chatStore } from "@/lib/chat-store";
+import type { ChatMessage as StoreChatMessage } from "@/lib/chat-store";
 import {
   Plane,
   Plus,
@@ -15,46 +17,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface FlightResultData {
-  offers: Array<{
-    id: string;
-    provider: string;
-    totalPrice: number;
-    currency: string;
-    totalDuration: string;
-    stops: number;
-    airlines: string[];
-    outbound: Array<{
-      flightNumber: string;
-      airlineName: string;
-      origin: string;
-      originName: string;
-      destination: string;
-      destinationName: string;
-      departureTime: string;
-      arrivalTime: string;
-      cabinClass: string;
-    }>;
-    valueScore?: number;
-    valueNotes?: string[];
-    bookable: boolean;
-    refundable?: boolean;
-    changeable?: boolean;
-  }>;
-  cheapestPrice?: number;
-  fastestDuration?: string;
-  providers: string[];
-  errors?: Array<{ provider: string; error: string }>;
-}
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  modelUsed?: string;
-  flightResults?: FlightResultData;
-}
-
 interface Conversation {
   id: string;
   title: string;
@@ -62,16 +24,33 @@ interface Conversation {
   createdAt: string;
 }
 
+// Hook to subscribe to the global chat store
+function useChatStore() {
+  const messages = useSyncExternalStore(
+    (cb) => chatStore.subscribe(cb),
+    () => chatStore.getMessages(),
+    () => chatStore.getMessages()
+  );
+  const isLoading = useSyncExternalStore(
+    (cb) => chatStore.subscribe(cb),
+    () => chatStore.getIsLoading(),
+    () => chatStore.getIsLoading()
+  );
+  const conversationId = useSyncExternalStore(
+    (cb) => chatStore.subscribe(cb),
+    () => chatStore.getConversationId(),
+    () => chatStore.getConversationId()
+  );
+  return { messages, isLoading, conversationId };
+}
+
 export function ChatPanel() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const { messages, isLoading, conversationId } = useChatStore();
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
-  const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const streamingRef = useRef<string>("");
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -93,33 +72,44 @@ export function ChatPanel() {
     loadConversations();
   }, [loadConversations]);
 
+  // Reload conversation list when loading finishes (new conversation created)
+  useEffect(() => {
+    if (!isLoading) {
+      loadConversations();
+    }
+  }, [isLoading, loadConversations]);
+
   // Load a specific conversation
   const loadConversation = async (convId: string) => {
     const res = await fetch(`/api/chat?conversationId=${convId}`);
     if (res.ok) {
       const data = await res.json();
-      setMessages(
-        data.messages.map((m: { id: string; role: string; content: string; modelUsed?: string }) => ({
-          id: m.id,
-          role: m.role as "user" | "assistant",
-          content: m.content,
-          modelUsed: m.modelUsed,
-        }))
+      chatStore.setMessages(
+        data.messages.map(
+          (m: { id: string; role: string; content: string; modelUsed?: string }) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            modelUsed: m.modelUsed,
+          })
+        )
       );
-      setConversationId(convId);
+      chatStore.setConversationId(convId);
       setShowHistory(false);
     }
   };
 
   const startNewConversation = () => {
-    setMessages([]);
-    setConversationId(null);
+    chatStore.abort();
+    chatStore.clearMessages();
     setShowHistory(false);
   };
 
   const deleteConversation = async (convId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    const res = await fetch(`/api/chat?conversationId=${convId}`, { method: "DELETE" });
+    const res = await fetch(`/api/chat?conversationId=${convId}`, {
+      method: "DELETE",
+    });
     if (res.ok) {
       if (conversationId === convId) {
         startNewConversation();
@@ -137,136 +127,12 @@ export function ChatPanel() {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!input.trim() || isLoading) return;
-
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: input.trim(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
+    const msg = input.trim();
     setInput("");
-    setIsLoading(true);
-    streamingRef.current = "";
-
-    // Add placeholder assistant message
-    const assistantId = crypto.randomUUID();
-    setMessages((prev) => [
-      ...prev,
-      { id: assistantId, role: "assistant", content: "" },
-    ]);
-
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: userMessage.content,
-          conversationId,
-          modelId,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) throw new Error("No reader");
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6);
-
-          try {
-            const event = JSON.parse(jsonStr);
-
-            if (event.type === "meta" && event.conversationId) {
-              setConversationId(event.conversationId);
-            } else if (event.type === "status") {
-              // Show search status
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, content: `🔍 ${event.content}` }
-                    : m
-                )
-              );
-            } else if (event.type === "flight_results") {
-              // Store flight results for rich display
-              try {
-                const results = JSON.parse(event.content);
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? { ...m, flightResults: results, content: "" }
-                      : m
-                  )
-                );
-              } catch {
-                // Skip parse errors
-              }
-            } else if (event.type === "text") {
-              streamingRef.current += event.content;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, content: streamingRef.current }
-                    : m
-                )
-              );
-            } else if (event.type === "done") {
-              const model = AVAILABLE_MODELS.find((m) => m.id === modelId);
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, modelUsed: model?.displayName }
-                    : m
-                )
-              );
-              loadConversations();
-            } else if (event.type === "error") {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? {
-                        ...m,
-                        content: `⚠️ Error: ${event.content}`,
-                      }
-                    : m
-                )
-              );
-            }
-          } catch {
-            // Skip non-JSON lines
-          }
-        }
-      }
-    } catch (error) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId
-            ? {
-                ...m,
-                content: `⚠️ Connection error: ${error instanceof Error ? error.message : "Unknown error"}`,
-              }
-            : m
-        )
-      );
-    } finally {
-      setIsLoading(false);
-    }
+    // Fire and forget — the store manages the stream lifecycle
+    chatStore.sendMessage(msg, modelId);
   };
 
   return (
@@ -359,26 +225,30 @@ export function ChatPanel() {
             onModelChange={setModelId}
           />
           <div className="flex-1" />
-          {conversationId && (
+          {isLoading && (
+            <span className="text-[10px] text-emerald-400 animate-pulse">
+              ● Generating...
+            </span>
+          )}
+          {conversationId && !isLoading && (
             <span className="text-[10px] text-muted-foreground/40">
-              {messages.filter((m) => m.role === "user").length} messages
+              {messages.filter((m: StoreChatMessage) => m.role === "user").length} messages
             </span>
           )}
         </div>
 
         {/* Messages */}
-        <div
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto"
-        >
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
           {messages.length === 0 ? (
             <EmptyState onSuggestionClick={(text) => setInput(text)} />
           ) : (
             <div className="max-w-3xl mx-auto py-4">
-              {messages.map((msg) => (
+              {messages.map((msg: StoreChatMessage) => (
                 <div key={msg.id}>
                   {msg.flightResults && (
-                    <FlightResultsCard results={msg.flightResults} />
+                    <FlightResultsCard
+                      results={msg.flightResults as FlightResultData}
+                    />
                   )}
                   <ChatMessage
                     role={msg.role}
@@ -408,6 +278,40 @@ export function ChatPanel() {
   );
 }
 
+// ── Flight Results Card ──
+
+interface FlightResultData {
+  offers: Array<{
+    id: string;
+    provider: string;
+    totalPrice: number;
+    currency: string;
+    totalDuration: string;
+    stops: number;
+    airlines: string[];
+    outbound: Array<{
+      flightNumber: string;
+      airlineName: string;
+      origin: string;
+      originName: string;
+      destination: string;
+      destinationName: string;
+      departureTime: string;
+      arrivalTime: string;
+      cabinClass: string;
+    }>;
+    valueScore?: number;
+    valueNotes?: string[];
+    bookable: boolean;
+    refundable?: boolean;
+    changeable?: boolean;
+  }>;
+  cheapestPrice?: number;
+  fastestDuration?: string;
+  providers: string[];
+  errors?: Array<{ provider: string; error: string }>;
+}
+
 function FlightResultsCard({ results }: { results: FlightResultData }) {
   if (!results.offers || results.offers.length === 0) return null;
 
@@ -423,7 +327,12 @@ function FlightResultsCard({ results }: { results: FlightResultData }) {
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {results.cheapestPrice && (
-              <span>From <span className="text-emerald-400 font-medium">${results.cheapestPrice}</span></span>
+              <span>
+                From{" "}
+                <span className="text-emerald-400 font-medium">
+                  ${results.cheapestPrice}
+                </span>
+              </span>
             )}
             {results.fastestDuration && (
               <span>Fastest: {results.fastestDuration}</span>
@@ -445,14 +354,20 @@ function FlightResultsCard({ results }: { results: FlightResultData }) {
             >
               {/* Rank & Value */}
               <div className="flex flex-col items-center gap-0.5 w-8 flex-shrink-0">
-                <span className="text-xs font-bold text-emerald-400">#{i + 1}</span>
+                <span className="text-xs font-bold text-emerald-400">
+                  #{i + 1}
+                </span>
                 {offer.valueScore && (
-                  <span className={cn(
-                    "text-[10px] font-medium px-1.5 py-0.5 rounded-full",
-                    offer.valueScore >= 70 ? "bg-emerald-500/20 text-emerald-400" :
-                    offer.valueScore >= 50 ? "bg-yellow-500/20 text-yellow-400" :
-                    "bg-muted text-muted-foreground"
-                  )}>
+                  <span
+                    className={cn(
+                      "text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                      offer.valueScore >= 70
+                        ? "bg-emerald-500/20 text-emerald-400"
+                        : offer.valueScore >= 50
+                          ? "bg-yellow-500/20 text-yellow-400"
+                          : "bg-muted text-muted-foreground"
+                    )}
+                  >
                     {offer.valueScore}
                   </span>
                 )}
@@ -465,7 +380,8 @@ function FlightResultsCard({ results }: { results: FlightResultData }) {
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   {offer.outbound?.[0]?.flightNumber}
-                  {offer.outbound?.length > 1 && ` +${offer.outbound.length - 1}`}
+                  {offer.outbound?.length > 1 &&
+                    ` +${offer.outbound.length - 1}`}
                 </p>
               </div>
 
@@ -522,7 +438,10 @@ function FlightResultsCard({ results }: { results: FlightResultData }) {
 
         {results.errors && results.errors.length > 0 && (
           <div className="px-4 py-2 border-t border-border/30 text-[10px] text-yellow-400/70">
-            ⚠️ {results.errors.map(e => `${e.provider}: ${e.error}`).join(" · ")}
+            ⚠️{" "}
+            {results.errors
+              .map((e) => `${e.provider}: ${e.error}`)
+              .join(" · ")}
           </div>
         )}
       </div>
@@ -530,16 +449,20 @@ function FlightResultsCard({ results }: { results: FlightResultData }) {
   );
 }
 
-function EmptyState({ onSuggestionClick }: { onSuggestionClick: (text: string) => void }) {
+// ── Empty State ──
+
+function EmptyState({
+  onSuggestionClick,
+}: {
+  onSuggestionClick: (text: string) => void;
+}) {
   return (
     <div className="flex-1 flex items-center justify-center p-8">
       <div className="text-center max-w-md">
         <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-6">
           <Plane className="w-8 h-8 text-emerald-500" />
         </div>
-        <h2 className="text-xl font-semibold mb-2">
-          Where are you headed?
-        </h2>
+        <h2 className="text-xl font-semibold mb-2">Where are you headed?</h2>
         <p className="text-sm text-muted-foreground mb-6">
           Tell me about your trip and I&apos;ll help you find the best flights,
           hotels, and deals. I can optimize for points, price, or comfort.
