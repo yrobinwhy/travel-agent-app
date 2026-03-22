@@ -10,12 +10,12 @@ export default async function LoginPage() {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
       {/* Animated gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 animate-gradient dark:from-indigo-950 dark:via-violet-950 dark:to-slate-950" />
+      <div className="absolute inset-0 bg-gradient-to-br from-emerald-900 via-emerald-800 to-slate-900 animate-gradient dark:from-emerald-950 dark:via-slate-950 dark:to-black" />
 
       {/* Floating orbs */}
-      <div className="absolute top-1/4 left-1/4 h-64 w-64 rounded-full bg-white/10 blur-3xl animate-float" />
-      <div className="absolute bottom-1/4 right-1/4 h-80 w-80 rounded-full bg-violet-400/10 blur-3xl animate-float" style={{ animationDelay: "3s" }} />
-      <div className="absolute top-1/2 right-1/3 h-48 w-48 rounded-full bg-indigo-300/10 blur-3xl animate-pulse-glow" />
+      <div className="absolute top-1/4 left-1/4 h-64 w-64 rounded-full bg-emerald-400/10 blur-3xl animate-float" />
+      <div className="absolute bottom-1/4 right-1/4 h-80 w-80 rounded-full bg-teal-400/8 blur-3xl animate-float" style={{ animationDelay: "3s" }} />
+      <div className="absolute top-1/2 right-1/3 h-48 w-48 rounded-full bg-emerald-300/8 blur-3xl animate-pulse-glow" />
 
       {/* Glass card */}
       <div className="relative z-10 w-full max-w-md mx-4 animate-fade-in">

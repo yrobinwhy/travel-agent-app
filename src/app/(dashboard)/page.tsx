@@ -35,7 +35,7 @@ export default async function DashboardPage() {
 
       <div className="flex-1 space-y-6 p-6 animate-fade-in">
         {/* Welcome banner */}
-        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 p-6 text-white shadow-lg shadow-indigo-500/20 dark:shadow-indigo-500/10">
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-600 p-6 text-white shadow-lg shadow-emerald-500/20 dark:shadow-emerald-500/10">
           <div className="absolute right-0 top-0 h-full w-1/3 bg-gradient-to-l from-white/5 to-transparent" />
           <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
           <div className="relative">
@@ -63,8 +63,8 @@ export default async function DashboardPage() {
               <CardTitle className="text-sm font-medium">
                 Start Planning
               </CardTitle>
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10 dark:bg-indigo-400/10">
-                <MessageSquare className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 dark:bg-emerald-400/10">
+                <MessageSquare className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
               </div>
             </CardHeader>
             <CardContent>
@@ -85,8 +85,8 @@ export default async function DashboardPage() {
               <CardTitle className="text-sm font-medium">
                 Upcoming Trips
               </CardTitle>
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10 dark:bg-violet-400/10">
-                <Map className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500/10 dark:bg-teal-400/10">
+                <Map className="h-4 w-4 text-teal-600 dark:text-teal-400" />
               </div>
             </CardHeader>
             <CardContent>
@@ -156,7 +156,7 @@ export default async function DashboardPage() {
                   label: "Manage loyalty programs & cards",
                   href: "/points",
                   icon: Star,
-                  color: "text-violet-600 dark:text-violet-400 bg-violet-500/10 dark:bg-violet-400/10",
+                  color: "text-teal-600 dark:text-teal-400 bg-teal-500/10 dark:bg-teal-400/10",
                 },
               ].map((step) => (
                 <Link
