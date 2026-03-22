@@ -25,7 +25,7 @@ export const FLIGHT_SEARCH_TOOL = {
       departureDate: {
         type: "string",
         description:
-          "Departure date in YYYY-MM-DD format. If user says 'tomorrow', 'next friday', etc., calculate the actual date.",
+          "Departure date in YYYY-MM-DD format. IMPORTANT: Today's date is provided in the system prompt. Use it to calculate dates for 'tomorrow', 'next friday', etc. All dates MUST be in the future.",
       },
       returnDate: {
         type: "string",
