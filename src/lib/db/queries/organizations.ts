@@ -115,6 +115,29 @@ export async function createInvite(formData: FormData) {
   revalidatePath("/admin");
 }
 
+export async function deleteInvite(formData: FormData) {
+  const user = await getUser();
+  const inviteId = formData.get("inviteId") as string;
+  const orgId = formData.get("orgId") as string;
+
+  // Verify user is owner or admin of the org
+  const membership = await db
+    .select()
+    .from(orgMemberships)
+    .where(
+      and(eq(orgMemberships.orgId, orgId), eq(orgMemberships.userId, user.id!))
+    );
+  if (
+    membership.length === 0 ||
+    !["owner", "admin"].includes(membership[0].role)
+  ) {
+    throw new Error("Only owners and admins can delete invites");
+  }
+
+  await db.delete(orgInvites).where(eq(orgInvites.id, inviteId));
+  revalidatePath("/admin");
+}
+
 export async function getOrgInvites(orgId: string) {
   const user = await getUser();
   // Verify user belongs to this org

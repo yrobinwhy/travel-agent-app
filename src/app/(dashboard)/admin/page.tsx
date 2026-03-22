@@ -1,4 +1,4 @@
-import { getUserOrgs, getOrgMembers, getOrgInvites, createOrg, createInvite } from "@/lib/db/queries/organizations";
+import { getUserOrgs, getOrgMembers, getOrgInvites, createOrg, createInvite, deleteInvite } from "@/lib/db/queries/organizations";
 import { users } from "@/lib/db/schema";
 import { db } from "@/lib/db";
 import { eq } from "drizzle-orm";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { Building2, Users, UserPlus, Crown, Link, Clock, CheckCircle2, Plus } from "lucide-react";
+import { Building2, Users, UserPlus, Crown, Link, Clock, CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { headers } from "next/headers";
 
 export default async function AdminPage() {
@@ -151,9 +151,18 @@ export default async function AdminPage() {
                                   <span className="text-sm">{invite.email}</span>
                                   <Badge variant="outline" className="text-xs">{invite.role}</Badge>
                                 </div>
-                                <span className="text-xs text-muted-foreground">
-                                  Expires {invite.expiresAt.toLocaleDateString()}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-muted-foreground">
+                                    Expires {invite.expiresAt.toLocaleDateString()}
+                                  </span>
+                                  <form action={deleteInvite}>
+                                    <input type="hidden" name="inviteId" value={invite.id} />
+                                    <input type="hidden" name="orgId" value={org.orgId} />
+                                    <button type="submit" className="text-muted-foreground hover:text-destructive transition-premium p-1 rounded" title="Delete invite">
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </form>
+                                </div>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Link className="h-3 w-3 text-muted-foreground shrink-0" />
