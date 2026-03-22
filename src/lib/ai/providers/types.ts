@@ -16,8 +16,14 @@ export interface ModelConfig {
 }
 
 export interface StreamChunk {
-  type: "text" | "error" | "done";
+  type: "text" | "error" | "done" | "tool_call" | "flight_results";
   content: string;
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
 }
 
 export interface CompletionOptions {
@@ -27,6 +33,7 @@ export interface CompletionOptions {
   maxTokens?: number;
   temperature?: number;
   stream?: boolean;
+  tools?: ToolDefinition[];
 }
 
 export interface CompletionResult {

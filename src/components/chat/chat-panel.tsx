@@ -15,11 +15,44 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+interface FlightResultData {
+  offers: Array<{
+    id: string;
+    provider: string;
+    totalPrice: number;
+    currency: string;
+    totalDuration: string;
+    stops: number;
+    airlines: string[];
+    outbound: Array<{
+      flightNumber: string;
+      airlineName: string;
+      origin: string;
+      originName: string;
+      destination: string;
+      destinationName: string;
+      departureTime: string;
+      arrivalTime: string;
+      cabinClass: string;
+    }>;
+    valueScore?: number;
+    valueNotes?: string[];
+    bookable: boolean;
+    refundable?: boolean;
+    changeable?: boolean;
+  }>;
+  cheapestPrice?: number;
+  fastestDuration?: string;
+  providers: string[];
+  errors?: Array<{ provider: string; error: string }>;
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   modelUsed?: string;
+  flightResults?: FlightResultData;
 }
 
 interface Conversation {
@@ -161,6 +194,29 @@ export function ChatPanel() {
 
             if (event.type === "meta" && event.conversationId) {
               setConversationId(event.conversationId);
+            } else if (event.type === "status") {
+              // Show search status
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, content: `🔍 ${event.content}` }
+                    : m
+                )
+              );
+            } else if (event.type === "flight_results") {
+              // Store flight results for rich display
+              try {
+                const results = JSON.parse(event.content);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, flightResults: results, content: "" }
+                      : m
+                  )
+                );
+              } catch {
+                // Skip parse errors
+              }
             } else if (event.type === "text") {
               streamingRef.current += event.content;
               setMessages((prev) =>
@@ -320,17 +376,21 @@ export function ChatPanel() {
           ) : (
             <div className="max-w-3xl mx-auto py-4">
               {messages.map((msg) => (
-                <ChatMessage
-                  key={msg.id}
-                  role={msg.role}
-                  content={msg.content}
-                  modelName={msg.modelUsed}
-                  isStreaming={
-                    isLoading &&
-                    msg.role === "assistant" &&
-                    msg === messages[messages.length - 1]
-                  }
-                />
+                <div key={msg.id}>
+                  {msg.flightResults && (
+                    <FlightResultsCard results={msg.flightResults} />
+                  )}
+                  <ChatMessage
+                    role={msg.role}
+                    content={msg.content}
+                    modelName={msg.modelUsed}
+                    isStreaming={
+                      isLoading &&
+                      msg.role === "assistant" &&
+                      msg === messages[messages.length - 1]
+                    }
+                  />
+                </div>
               ))}
             </div>
           )}
@@ -343,6 +403,128 @@ export function ChatPanel() {
           onSubmit={handleSubmit}
           isLoading={isLoading}
         />
+      </div>
+    </div>
+  );
+}
+
+function FlightResultsCard({ results }: { results: FlightResultData }) {
+  if (!results.offers || results.offers.length === 0) return null;
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-2">
+      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-emerald-500/10 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Plane className="w-4 h-4 text-emerald-500" />
+            <span className="text-sm font-medium">
+              {results.offers.length} flights found
+            </span>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            {results.cheapestPrice && (
+              <span>From <span className="text-emerald-400 font-medium">${results.cheapestPrice}</span></span>
+            )}
+            {results.fastestDuration && (
+              <span>Fastest: {results.fastestDuration}</span>
+            )}
+            <span className="text-[10px]">
+              via {results.providers.join(", ")}
+            </span>
+          </div>
+        </div>
+
+        <div className="divide-y divide-border/30 max-h-[400px] overflow-y-auto">
+          {results.offers.slice(0, 8).map((offer, i) => (
+            <div
+              key={offer.id}
+              className={cn(
+                "px-4 py-3 flex items-center gap-4 hover:bg-emerald-500/5 transition-colors",
+                i === 0 && "bg-emerald-500/5"
+              )}
+            >
+              {/* Rank & Value */}
+              <div className="flex flex-col items-center gap-0.5 w-8 flex-shrink-0">
+                <span className="text-xs font-bold text-emerald-400">#{i + 1}</span>
+                {offer.valueScore && (
+                  <span className={cn(
+                    "text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                    offer.valueScore >= 70 ? "bg-emerald-500/20 text-emerald-400" :
+                    offer.valueScore >= 50 ? "bg-yellow-500/20 text-yellow-400" :
+                    "bg-muted text-muted-foreground"
+                  )}>
+                    {offer.valueScore}
+                  </span>
+                )}
+              </div>
+
+              {/* Airlines */}
+              <div className="w-24 flex-shrink-0">
+                <p className="text-xs font-medium truncate">
+                  {offer.airlines.join(", ")}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {offer.outbound?.[0]?.flightNumber}
+                  {offer.outbound?.length > 1 && ` +${offer.outbound.length - 1}`}
+                </p>
+              </div>
+
+              {/* Route */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-mono font-medium">
+                    {offer.outbound?.[0]?.origin}
+                  </span>
+                  <div className="flex-1 flex items-center gap-1">
+                    <div className="h-px flex-1 bg-border" />
+                    {offer.stops > 0 && (
+                      <span className="text-[10px] text-muted-foreground px-1">
+                        {offer.stops} stop{offer.stops > 1 ? "s" : ""}
+                      </span>
+                    )}
+                    <div className="h-px flex-1 bg-border" />
+                  </div>
+                  <span className="font-mono font-medium">
+                    {offer.outbound?.[offer.outbound.length - 1]?.destination}
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {offer.totalDuration} · {offer.outbound?.[0]?.cabinClass}
+                </p>
+              </div>
+
+              {/* Tags */}
+              <div className="flex flex-col gap-0.5 flex-shrink-0">
+                {offer.refundable && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                    Refundable
+                  </span>
+                )}
+                {offer.bookable && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
+                    Bookable
+                  </span>
+                )}
+              </div>
+
+              {/* Price */}
+              <div className="text-right flex-shrink-0 w-20">
+                <p className="text-sm font-bold text-emerald-400">
+                  ${offer.totalPrice.toLocaleString()}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {offer.currency}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {results.errors && results.errors.length > 0 && (
+          <div className="px-4 py-2 border-t border-border/30 text-[10px] text-yellow-400/70">
+            ⚠️ {results.errors.map(e => `${e.provider}: ${e.error}`).join(" · ")}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,8 +1,14 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { conversations, messages } from "@/lib/db/schema/intelligence";
-import { getProvider, getModelById, DEFAULT_MODEL_ID } from "@/lib/ai/providers";
+import {
+  getProvider,
+  getModelById,
+  DEFAULT_MODEL_ID,
+} from "@/lib/ai/providers";
 import { TRAVEL_CONCIERGE_SYSTEM_PROMPT } from "@/lib/ai/prompts/system";
+import { FLIGHT_SEARCH_TOOL, parseToolCall } from "@/lib/ai/tools/flight-search";
+import { searchFlights } from "@/lib/flights";
 import { eq, asc } from "drizzle-orm";
 import type { ChatMessage } from "@/lib/ai/providers";
 
@@ -67,12 +73,17 @@ export async function POST(request: Request) {
     content: m.content,
   }));
 
+  // Only provide tools for Claude (Anthropic) — Gemini uses grounded search natively
+  const tools =
+    model.provider === "anthropic"
+      ? [FLIGHT_SEARCH_TOOL]
+      : undefined;
+
   // Stream response
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       let fullContent = "";
-      let totalTokens = 0;
 
       try {
         // Send conversation ID first
@@ -87,20 +98,164 @@ export async function POST(request: Request) {
           messages: chatMessages,
           systemPrompt: TRAVEL_CONCIERGE_SYSTEM_PROMPT,
           stream: true,
+          tools,
         });
 
         for await (const chunk of gen) {
-          if (chunk.type === "text") {
+          if (chunk.type === "tool_call") {
+            // LLM wants to call a tool
+            const toolCall = JSON.parse(chunk.content);
+
+            if (toolCall.toolName === "search_flights") {
+              // Notify user that search is happening
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: "status",
+                    content: "Searching flights across multiple providers...",
+                  })}\n\n`
+                )
+              );
+
+              // Execute flight search
+              const searchParams = parseToolCall(
+                toolCall.toolInput as Record<string, unknown>
+              );
+              console.log("[FLIGHT SEARCH] Params:", JSON.stringify(searchParams));
+
+              let results;
+              try {
+                results = await searchFlights(searchParams);
+                console.log("[FLIGHT SEARCH] Results:", results.offers.length, "offers from", results.providers.join(", "));
+                if (results.errors?.length) {
+                  console.error("[FLIGHT SEARCH] Errors:", JSON.stringify(results.errors));
+                }
+              } catch (searchError) {
+                console.error("[FLIGHT SEARCH] Fatal error:", searchError);
+                results = {
+                  params: searchParams,
+                  offers: [],
+                  searchedAt: new Date().toISOString(),
+                  providers: [],
+                  errors: [{ provider: "all", error: searchError instanceof Error ? searchError.message : "Search failed" }],
+                };
+              }
+
+              // Send flight results as structured data
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: "flight_results",
+                    content: JSON.stringify(results),
+                  })}\n\n`
+                )
+              );
+
+              // Now ask the LLM to summarize the results
+              const summaryMessages: ChatMessage[] = [
+                ...chatMessages,
+                {
+                  role: "assistant" as const,
+                  content: `I searched for flights and found ${results.offers.length} options. Here are the results: ${JSON.stringify(
+                    results.offers.slice(0, 5).map((o) => ({
+                      airlines: o.airlines.join(", "),
+                      price: `${o.currency} ${o.totalPrice}`,
+                      duration: o.totalDuration,
+                      stops: o.stops,
+                      valueScore: o.valueScore,
+                      valueNotes: o.valueNotes,
+                      refundable: o.refundable,
+                      changeable: o.changeable,
+                      bookable: o.bookable,
+                      outbound: o.outbound.map((s) => ({
+                        flight: s.flightNumber,
+                        from: `${s.originName} (${s.origin})`,
+                        to: `${s.destinationName} (${s.destination})`,
+                        depart: s.departureTime,
+                        arrive: s.arrivalTime,
+                        cabin: s.cabinClass,
+                      })),
+                    }))
+                  )}${
+                    results.errors?.length
+                      ? `\n\nSome providers had errors: ${results.errors
+                          .map((e) => `${e.provider}: ${e.error}`)
+                          .join(", ")}`
+                      : ""
+                  }`,
+                },
+                {
+                  role: "user" as const,
+                  content:
+                    "Now present these flight results to me in a clear, concise format. Highlight the best value option and explain why. Include prices, airlines, times, and number of stops. If you have recommendations based on my preferences, share them. Keep it conversational.",
+                },
+              ];
+
+              // Stream the summary
+              const summaryGen = provider.chatStream({
+                model,
+                messages: summaryMessages,
+                systemPrompt: TRAVEL_CONCIERGE_SYSTEM_PROMPT,
+                stream: true,
+                // No tools for summary — just text
+              });
+
+              for await (const summaryChunk of summaryGen) {
+                if (summaryChunk.type === "text") {
+                  fullContent += summaryChunk.content;
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({
+                        type: "text",
+                        content: summaryChunk.content,
+                      })}\n\n`
+                    )
+                  );
+                }
+              }
+
+              // Save assistant message with flight data reference
+              await db.insert(messages).values({
+                conversationId: convId!,
+                role: "assistant",
+                content: fullContent,
+                modelUsed: model.apiModelId,
+                toolCalls: {
+                  flightSearch: {
+                    params: searchParams,
+                    resultCount: results.offers.length,
+                    providers: results.providers,
+                    cheapest: results.cheapestPrice,
+                  },
+                },
+              });
+
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: "done",
+                    conversationId: convId,
+                  })}\n\n`
+                )
+              );
+            }
+          } else if (chunk.type === "text") {
             fullContent += chunk.content;
             controller.enqueue(
               encoder.encode(
-                `data: ${JSON.stringify({ type: "text", content: chunk.content })}\n\n`
+                `data: ${JSON.stringify({
+                  type: "text",
+                  content: chunk.content,
+                })}\n\n`
               )
             );
           } else if (chunk.type === "error") {
             controller.enqueue(
               encoder.encode(
-                `data: ${JSON.stringify({ type: "error", content: chunk.content })}\n\n`
+                `data: ${JSON.stringify({
+                  type: "error",
+                  content: chunk.content,
+                })}\n\n`
               )
             );
           } else if (chunk.type === "done") {
@@ -110,12 +265,14 @@ export async function POST(request: Request) {
               role: "assistant",
               content: fullContent,
               modelUsed: model.apiModelId,
-              tokensUsed: totalTokens || null,
             });
 
             controller.enqueue(
               encoder.encode(
-                `data: ${JSON.stringify({ type: "done", conversationId: convId })}\n\n`
+                `data: ${JSON.stringify({
+                  type: "done",
+                  conversationId: convId,
+                })}\n\n`
               )
             );
           }
@@ -187,8 +344,6 @@ export async function DELETE(request: Request) {
   const all = searchParams.get("all");
 
   if (all === "true") {
-    // Delete all conversations for this user
-    // Messages cascade-delete via FK
     const userConvs = await db
       .select({ id: conversations.id })
       .from(conversations)
@@ -203,7 +358,6 @@ export async function DELETE(request: Request) {
   }
 
   if (convId) {
-    // Verify ownership
     const [conv] = await db
       .select()
       .from(conversations)
@@ -219,5 +373,8 @@ export async function DELETE(request: Request) {
     return Response.json({ deleted: 1 });
   }
 
-  return Response.json({ error: "Provide conversationId or all=true" }, { status: 400 });
+  return Response.json(
+    { error: "Provide conversationId or all=true" },
+    { status: 400 }
+  );
 }
