@@ -5,14 +5,13 @@ import type {
   StreamChunk,
 } from "./types";
 
-let _genAI: InstanceType<typeof import("@google/generative-ai").GoogleGenerativeAI> | null = null;
-
 async function getGenAI() {
-  if (!_genAI) {
-    const { GoogleGenerativeAI } = await import("@google/generative-ai");
-    _genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GOOGLE_AI_API_KEY is not set in environment variables");
   }
-  return _genAI;
+  const { GoogleGenerativeAI } = await import("@google/generative-ai");
+  return new GoogleGenerativeAI(apiKey);
 }
 
 export const googleProvider: LLMProvider = {

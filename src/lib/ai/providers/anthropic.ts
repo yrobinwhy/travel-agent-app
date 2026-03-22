@@ -5,16 +5,15 @@ import type {
   StreamChunk,
 } from "./types";
 
-let _client: InstanceType<typeof import("@anthropic-ai/sdk").default> | null = null;
-
 async function getClient() {
-  if (!_client) {
-    const Anthropic = (await import("@anthropic-ai/sdk")).default;
-    _client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY!,
-    });
+  // Use CLAUDE_API_KEY to avoid collision with shell env ANTHROPIC_API_KEY
+  // (Claude Code sets ANTHROPIC_API_KEY="" in the shell, Next.js won't override it)
+  const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error("CLAUDE_API_KEY is not set in environment variables");
   }
-  return _client;
+  const Anthropic = (await import("@anthropic-ai/sdk")).default;
+  return new Anthropic({ apiKey });
 }
 
 export const anthropicProvider: LLMProvider = {
