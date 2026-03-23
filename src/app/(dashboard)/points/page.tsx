@@ -6,7 +6,6 @@ import {
   createHotelProgram,
   deleteFFProgram,
   deleteHotelProgram,
-  upsertPointBalance,
 } from "@/lib/db/queries/loyalty";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { Plane, Hotel, Coins, Plus, Info, Trash2 } from "lucide-react";
+import { Plane, Hotel, Plus, Info, Trash2, Coins } from "lucide-react";
 
 async function deleteFF(formData: FormData) {
   "use server";
@@ -349,35 +348,6 @@ export default async function PointsPage() {
             </CardContent>
           </Card>
         )}
-
-        {/* Manual balance entry */}
-        <Card className="border-dashed">
-          <CardContent className="pt-6">
-            <details className="group">
-              <summary className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-premium">
-                <Plus className="h-3.5 w-3.5" />
-                <span>Manually add or update a point balance</span>
-              </summary>
-              <form action={upsertPointBalance} className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="pb-program" className="text-xs">Program Key</Label>
-                  <Input id="pb-program" name="program" placeholder="chase_ur" className="h-9" required />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="pb-programName" className="text-xs">Display Name</Label>
-                  <Input id="pb-programName" name="programName" placeholder="Chase Ultimate Rewards" className="h-9" required />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="pb-balance" className="text-xs">Balance</Label>
-                  <Input id="pb-balance" name="balance" type="number" placeholder="0" className="h-9" required />
-                </div>
-                <div className="md:col-span-3 flex justify-end">
-                  <Button type="submit" size="sm">Save Balance</Button>
-                </div>
-              </form>
-            </details>
-          </CardContent>
-        </Card>
 
       </div>
     </>
