@@ -41,6 +41,9 @@ export interface HotelOfferDisplay {
   valueScore?: number;
   valueNotes?: string[];
   bookingUrl?: string;
+  tripAdvisorRating?: number;
+  tripAdvisorReviews?: number;
+  tripAdvisorRank?: string;
 }
 
 export interface HotelResultData {
@@ -209,6 +212,16 @@ export function HotelResultsCard({ results, onSelectHotel, onActionChip }: Hotel
                         </span>
                       )}
                     </div>
+                    {offer.tripAdvisorRank && (
+                      <p className="text-[10px] text-emerald-500 font-medium mt-0.5">
+                        🏆 {offer.tripAdvisorRank}
+                      </p>
+                    )}
+                    {!offer.tripAdvisorRank && offer.tripAdvisorRating && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        TripAdvisor: {offer.tripAdvisorRating}/5 ({offer.tripAdvisorReviews?.toLocaleString()} reviews)
+                      </p>
+                    )}
                     {offer.neighborhood && (
                       <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
                         <MapPin className="w-2.5 h-2.5" />{offer.neighborhood}
@@ -278,6 +291,13 @@ export function HotelResultsCard({ results, onSelectHotel, onActionChip }: Hotel
                             {note}
                           </span>
                         ))}
+                      </div>
+                    )}
+                    {offer.tripAdvisorRating && (
+                      <div className="flex items-center gap-2 mt-2 text-[10px]">
+                        <span className="font-medium text-emerald-400">TripAdvisor {offer.tripAdvisorRating}/5</span>
+                        {offer.tripAdvisorReviews && <span className="text-muted-foreground">({offer.tripAdvisorReviews.toLocaleString()} reviews)</span>}
+                        {offer.tripAdvisorRank && <span className="text-emerald-400">· {offer.tripAdvisorRank}</span>}
                       </div>
                     )}
                     {offer.address && (

@@ -48,6 +48,9 @@ export interface HotelOffer {
   // Reviews
   locationRating?: number; // Location score (0-5)
   reviewBreakdown?: Array<{ name: string; positive: number; negative: number; total: number }>;
+  tripAdvisorRating?: number; // TripAdvisor rating (0-5)
+  tripAdvisorReviews?: number;
+  tripAdvisorRank?: string; // e.g. "#12 of 456 hotels in Lisbon"
   // Cancellation
   freeCancellation?: boolean;
   cancellationDeadline?: string;
