@@ -6,15 +6,16 @@ import {
   createHotelProgram,
   deleteFFProgram,
   deleteHotelProgram,
+  upsertPointBalance,
 } from "@/lib/db/queries/loyalty";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { Plane, Hotel, Plus, Info, Trash2, Coins } from "lucide-react";
+import { Plane, Hotel, Plus, Info, Coins } from "lucide-react";
+import { EditableProgramRow } from "@/components/loyalty/editable-program-row";
 
 async function deleteFF(formData: FormData) {
   "use server";
@@ -26,6 +27,11 @@ async function deleteHotel(formData: FormData) {
   "use server";
   const id = formData.get("id") as string;
   await deleteHotelProgram(id);
+}
+
+async function updateBalance(formData: FormData) {
+  "use server";
+  await upsertPointBalance(formData);
 }
 
 export default async function PointsPage() {
@@ -154,32 +160,21 @@ export default async function PointsPage() {
                 {ffPrograms.map((p) => {
                   const balance = getFFBalance(p.airlineCode, p.programName);
                   return (
-                    <div key={p.id} className="flex items-center justify-between rounded-lg border p-3 transition-premium hover:bg-accent/50">
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono font-bold text-lg text-primary">{p.airlineCode}</span>
-                        <div>
-                          <p className="text-sm font-medium">{p.programName}</p>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            {p.memberNumber && <span className="font-mono">{p.memberNumber}</span>}
-                            {p.priorityPhone && <span className="hidden md:inline">· {p.priorityPhone}</span>}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {balance !== null && (
-                          <span className="font-mono font-semibold text-sm text-emerald-500">
-                            {balance.toLocaleString()} <span className="text-[10px] text-muted-foreground font-normal">miles</span>
-                          </span>
-                        )}
-                        {p.statusLevel && <Badge variant="secondary">{p.statusLevel}</Badge>}
-                        <form action={deleteFF}>
-                          <input type="hidden" name="id" value={p.id} />
-                          <button type="submit" className="p-1 text-muted-foreground hover:text-destructive transition-colors" title="Delete program">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </form>
-                      </div>
-                    </div>
+                    <EditableProgramRow
+                      key={p.id}
+                      id={p.id}
+                      type="ff"
+                      code={p.airlineCode}
+                      programName={p.programName}
+                      memberNumber={p.memberNumber}
+                      statusLevel={p.statusLevel}
+                      priorityPhone={p.priorityPhone}
+                      balance={balance}
+                      balanceLabel="miles"
+                      balanceProgram={p.airlineCode.toLowerCase()}
+                      deleteAction={deleteFF}
+                      updateBalanceAction={updateBalance}
+                    />
                   );
                 })}
               </div>
@@ -246,32 +241,20 @@ export default async function PointsPage() {
                 {hotelPrograms.map((p) => {
                   const balance = getHotelBalance(p.hotelChain, p.programName);
                   return (
-                    <div key={p.id} className="flex items-center justify-between rounded-lg border p-3 transition-premium hover:bg-accent/50">
-                      <div className="flex items-center gap-3">
-                        <Hotel className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm font-medium">{p.programName}</p>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span>{p.hotelChain}</span>
-                            {p.memberNumber && <span className="font-mono">· {p.memberNumber}</span>}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {balance !== null && (
-                          <span className="font-mono font-semibold text-sm text-emerald-500">
-                            {balance.toLocaleString()} <span className="text-[10px] text-muted-foreground font-normal">pts</span>
-                          </span>
-                        )}
-                        {p.statusLevel && <Badge variant="secondary">{p.statusLevel}</Badge>}
-                        <form action={deleteHotel}>
-                          <input type="hidden" name="id" value={p.id} />
-                          <button type="submit" className="p-1 text-muted-foreground hover:text-destructive transition-colors" title="Delete program">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </form>
-                      </div>
-                    </div>
+                    <EditableProgramRow
+                      key={p.id}
+                      id={p.id}
+                      type="hotel"
+                      programName={p.programName}
+                      hotelChain={p.hotelChain}
+                      memberNumber={p.memberNumber}
+                      statusLevel={p.statusLevel}
+                      balance={balance}
+                      balanceLabel="pts"
+                      balanceProgram={p.hotelChain.toLowerCase()}
+                      deleteAction={deleteHotel}
+                      updateBalanceAction={updateBalance}
+                    />
                   );
                 })}
               </div>
