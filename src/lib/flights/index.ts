@@ -55,10 +55,13 @@ export async function searchFlights(
         activeProviders[results.indexOf(result)]?.name || "unknown";
       errors.push({
         provider: providerName,
-        error: result.reason?.message || "Unknown error",
+        error: sanitizeError(result.reason?.message || "Search unavailable"),
       });
     }
   }
+
+  // Deduplicate — same flight number + departure time = keep cheapest
+  allOffers = deduplicateOffers(allOffers);
 
   // Score and sort
   allOffers = scoreOffers(allOffers, params);
@@ -195,6 +198,57 @@ function sortOffers(
         (a, b) => (b.valueScore || 0) - (a.valueScore || 0)
       );
   }
+}
+
+/**
+ * Deduplicate offers — same flight number + departure = keep cheapest + most flexible
+ */
+function deduplicateOffers(offers: FlightOffer[]): FlightOffer[] {
+  const seen = new Map<string, FlightOffer>();
+
+  for (const offer of offers) {
+    const firstSeg = offer.outbound[0];
+    if (!firstSeg) continue;
+
+    // Key by flight number + departure time (covers same flight across providers)
+    const key = `${firstSeg.flightNumber}-${firstSeg.departureTime}`;
+
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, offer);
+    } else {
+      // Keep the one with better attributes
+      const shouldReplace =
+        // Prefer cheaper
+        offer.totalPrice < existing.totalPrice ||
+        // Same price but more flexible
+        (offer.totalPrice === existing.totalPrice && offer.refundable && !existing.refundable) ||
+        // Same price but bookable
+        (offer.totalPrice === existing.totalPrice && offer.bookable && !existing.bookable);
+
+      if (shouldReplace) {
+        seen.set(key, offer);
+      }
+    }
+  }
+
+  return Array.from(seen.values());
+}
+
+/**
+ * Sanitize error messages — don't leak raw API responses to users
+ */
+function sanitizeError(error: string): string {
+  // Strip raw JSON from error messages
+  const jsonStart = error.indexOf("{");
+  if (jsonStart > 0) {
+    return error.substring(0, jsonStart).trim();
+  }
+  // Truncate long errors
+  if (error.length > 100) {
+    return error.substring(0, 100) + "...";
+  }
+  return error;
 }
 
 function parseDurationToMinutes(duration: string): number {
