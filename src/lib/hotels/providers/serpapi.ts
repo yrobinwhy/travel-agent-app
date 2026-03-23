@@ -64,6 +64,8 @@ export const serpapiHotelProvider: HotelSearchProvider = {
       const images = (prop.images as Array<Record<string, string>>) || [];
       const amenities = (prop.amenities as string[]) || [];
       const nearbyPlaces = prop.nearby_places as Array<Record<string, unknown>> | undefined;
+      const locationRating = prop.location_rating as number | undefined;
+      const reviewsBreakdown = (prop.reviews_breakdown as Array<Record<string, unknown>>) || [];
 
       // Parse price — SerpApi returns it as "$XXX" string
       const priceStr = (ratePerNight?.lowest as string) || (ratePerNight?.extracted_lowest as string) || "";
@@ -99,6 +101,13 @@ export const serpapiHotelProvider: HotelSearchProvider = {
         checkIn: params.checkIn,
         checkOut: params.checkOut,
         nights,
+        locationRating,
+        reviewBreakdown: reviewsBreakdown.slice(0, 5).map((rb) => ({
+          name: rb.name as string,
+          positive: rb.positive as number,
+          negative: rb.negative as number,
+          total: rb.total_mentioned as number,
+        })),
         freeCancellation: amenities.some((a: string) =>
           a.toLowerCase().includes("free cancellation")
         ),

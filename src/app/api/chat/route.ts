@@ -63,6 +63,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "Message too long (max 10,000 characters)" }, { status: 400 });
   }
 
+  // === Direct CONFIRM handler — bypass LLM for confirmed selections ===
+  if (message.startsWith("CONFIRM:")) {
+    return handleConfirmAction(message, userId, conversationId);
+  }
+
   const model = getModelById(modelId);
   if (!model) {
     return Response.json({ error: "Invalid model" }, { status: 400 });
@@ -518,6 +523,139 @@ export async function POST(request: Request) {
         const errMsg =
           error instanceof Error ? error.message : "Unknown error";
         send({ type: "error", content: errMsg });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+
+// === Direct CONFIRM handler — adds flights/hotels to trip without LLM ===
+async function handleConfirmAction(message: string, userId: string, conversationId?: string) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (data: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      };
+
+      try {
+        // Extract tripId from message
+        const tripIdMatch = message.match(/tripId="([^"]+)"/);
+        let tripId = tripIdMatch?.[1];
+
+        // Save user message to conversation
+        if (conversationId) {
+          await db.insert(messages).values({
+            conversationId,
+            role: "user",
+            content: message,
+          });
+          send({ type: "meta", conversationId });
+        }
+
+        // Create trip if none exists
+        if (!tripId) {
+          const trip = await createTripFromChat({
+            title: "My Trip",
+            userId,
+            conversationId,
+          });
+          tripId = trip.id;
+          send({ type: "trip_created", content: JSON.stringify({ tripId: trip.id, title: trip.title }) });
+        }
+
+        if (message.includes("add_flight_to_trip") || message.match(/\b[A-Z]{2}\d{1,4}\b/) || message.includes("→")) {
+          // Parse flight details from confirm message
+          const airlineMatch = message.match(/Add\s+(.+?)\s+([A-Z]{2}\d{1,4})/);
+          const routeMatch = message.match(/\(([A-Z]{3})→([A-Z]{3})/);
+          const priceMatch = message.match(/\$([0-9,.]+)/);
+          const departsMatch = message.match(/departs\s+(\S+)/);
+          const arrivesMatch = message.match(/arrives\s+(\S+)/);
+
+          await addSegmentToTrip({
+            tripId,
+            type: "flight",
+            title: `${airlineMatch?.[1] || "Flight"} ${airlineMatch?.[2] || ""} · ${routeMatch?.[1] || "?"} → ${routeMatch?.[2] || "?"}`.trim(),
+            carrier: airlineMatch?.[1],
+            flightNumber: airlineMatch?.[2],
+            origin: routeMatch?.[1],
+            destination: routeMatch?.[2],
+            startAt: departsMatch?.[1] ? new Date(departsMatch[1]) : undefined,
+            endAt: arrivesMatch?.[1] ? new Date(arrivesMatch[1]) : undefined,
+          });
+
+          const price = priceMatch ? parseFloat(priceMatch[1].replace(",", "")) : undefined;
+          if (price) {
+            await addBookingToTrip({
+              tripId,
+              userId,
+              type: "flight",
+              vendorName: airlineMatch?.[1],
+              totalCost: price,
+              currency: "USD",
+              status: "draft",
+            });
+          }
+
+          const confirmText = `✅ Added ${airlineMatch?.[1] || ""} ${airlineMatch?.[2] || ""} (${routeMatch?.[1] || ""}→${routeMatch?.[2] || ""}${price ? `, $${price}` : ""}) to your trip. You can view it in the Trips page.`;
+          send({ type: "text", content: confirmText });
+
+        } else if (message.toLowerCase().includes("hotel") || message.toLowerCase().includes("add_hotel_to_trip")) {
+          // Parse hotel details
+          const hotelMatch = message.match(/Add\s+(.+?)\s+\(/);
+          const priceMatch = message.match(/\$([0-9,.]+)\/night/);
+          const nightsMatch = message.match(/(\d+)\s+nights?/);
+          const totalMatch = message.match(/total\s+\$([0-9,.]+)/);
+
+          const hotelName = hotelMatch?.[1] || "Hotel";
+          const pricePerNight = priceMatch ? parseFloat(priceMatch[1].replace(",", "")) : undefined;
+          const nights = nightsMatch ? parseInt(nightsMatch[1]) : undefined;
+          const total = totalMatch ? parseFloat(totalMatch[1].replace(",", "")) : (pricePerNight && nights ? pricePerNight * nights : undefined);
+
+          await addSegmentToTrip({
+            tripId,
+            type: "hotel_night",
+            title: hotelName,
+            locationName: hotelName,
+          });
+
+          if (total) {
+            await addBookingToTrip({
+              tripId,
+              userId,
+              type: "hotel",
+              vendorName: hotelName,
+              totalCost: total,
+              currency: "USD",
+              status: "draft",
+            });
+          }
+
+          const confirmText = `✅ Added ${hotelName}${pricePerNight ? ` ($${pricePerNight}/night` : ""}${nights ? `, ${nights} nights` : ""}${total ? `, $${total} total` : ""}${pricePerNight || nights || total ? ")" : ""} to your trip. You can view it in the Trips page.`;
+          send({ type: "text", content: confirmText });
+        }
+
+        // Save assistant message
+        if (conversationId) {
+          await db.insert(messages).values({
+            conversationId,
+            role: "assistant",
+            content: "Added to your trip.",
+          });
+        }
+
+        send({ type: "done", conversationId });
+      } catch (error) {
+        send({ type: "error", content: `Could not add to trip: ${error instanceof Error ? error.message : "Unknown error"}` });
       } finally {
         controller.close();
       }

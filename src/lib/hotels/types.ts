@@ -45,6 +45,9 @@ export interface HotelOffer {
   checkIn: string;
   checkOut: string;
   nights: number;
+  // Reviews
+  locationRating?: number; // Location score (0-5)
+  reviewBreakdown?: Array<{ name: string; positive: number; negative: number; total: number }>;
   // Cancellation
   freeCancellation?: boolean;
   cancellationDeadline?: string;

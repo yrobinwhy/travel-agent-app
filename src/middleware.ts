@@ -55,7 +55,7 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https: blob:",
+      "img-src 'self' data: https: blob: https://lh3.googleusercontent.com https://photos.hotelbeds.com https://www.gstatic.com",
       "font-src 'self' https://fonts.gstatic.com",
       "connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com https://api.duffel.com https://serpapi.com",
       "frame-ancestors 'none'",
