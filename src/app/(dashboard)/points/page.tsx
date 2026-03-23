@@ -93,6 +93,21 @@ export default async function PointsPage() {
     return null;
   }
 
+  // Sort programs: highest balance first, then by creation date (newest first)
+  const sortedFFPrograms = [...ffPrograms].sort((a, b) => {
+    const balA = getFFBalance(a.airlineCode, a.programName) ?? -1;
+    const balB = getFFBalance(b.airlineCode, b.programName) ?? -1;
+    if (balB !== balA) return balB - balA;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
+  const sortedHotelPrograms = [...hotelPrograms].sort((a, b) => {
+    const balA = getHotelBalance(a.hotelChain, a.programName) ?? -1;
+    const balB = getHotelBalance(b.hotelChain, b.programName) ?? -1;
+    if (balB !== balA) return balB - balA;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
   // Find "orphan" balances not matched to any program (e.g. credit card points)
   const matchedBalanceKeys = new Set<string>();
   for (const p of ffPrograms) {
@@ -117,9 +132,11 @@ export default async function PointsPage() {
     }
   }
 
-  const orphanBalances = pointBalances.filter(
-    (b) => !matchedBalanceKeys.has(b.program.toLowerCase()) && !(b.programName && matchedBalanceKeys.has(b.programName.toLowerCase()))
-  );
+  const orphanBalances = pointBalances
+    .filter(
+      (b) => !matchedBalanceKeys.has(b.program.toLowerCase()) && !(b.programName && matchedBalanceKeys.has(b.programName.toLowerCase()))
+    )
+    .sort((a, b) => Number(b.balance) - Number(a.balance));
 
   return (
     <>
@@ -157,7 +174,7 @@ export default async function PointsPage() {
           {ffPrograms.length > 0 && (
             <CardContent>
               <div className="space-y-3">
-                {ffPrograms.map((p) => {
+                {sortedFFPrograms.map((p) => {
                   const balance = getFFBalance(p.airlineCode, p.programName);
                   return (
                     <EditableProgramRow
@@ -238,7 +255,7 @@ export default async function PointsPage() {
           {hotelPrograms.length > 0 && (
             <CardContent>
               <div className="space-y-3">
-                {hotelPrograms.map((p) => {
+                {sortedHotelPrograms.map((p) => {
                   const balance = getHotelBalance(p.hotelChain, p.programName);
                   return (
                     <EditableProgramRow
