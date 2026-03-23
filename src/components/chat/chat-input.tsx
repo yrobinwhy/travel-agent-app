@@ -66,7 +66,7 @@ export function ChatInput({
             )}
           </Button>
         </div>
-        <p className="text-[10px] text-muted-foreground/40 text-center mt-2">
+        <p className="text-[10px] text-muted-foreground/60 text-center mt-2">
           Press Enter to send, Shift+Enter for new line
         </p>
       </div>

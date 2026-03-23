@@ -8,6 +8,8 @@ import { FlightResultsCard } from "./flight-results-card";
 import type { FlightOffer, FlightResultData } from "./flight-results-card";
 import { HotelResultsCard } from "./hotel-results-card";
 import type { HotelOfferDisplay, HotelResultData } from "./hotel-results-card";
+import { toast } from "sonner";
+import { FlightSearchSkeleton, HotelSearchSkeleton } from "./search-skeleton";
 import { DEFAULT_MODEL_ID, AVAILABLE_MODELS } from "@/lib/ai/providers";
 import { chatStore } from "@/lib/chat-store";
 import type { ChatMessage as StoreChatMessage } from "@/lib/chat-store";
@@ -115,6 +117,7 @@ export function ChatPanel() {
       method: "DELETE",
     });
     if (res.ok) {
+      toast.success("Conversation deleted");
       if (conversationId === convId) {
         startNewConversation();
       }
@@ -126,6 +129,7 @@ export function ChatPanel() {
     if (!confirm("Delete all conversations? This cannot be undone.")) return;
     const res = await fetch("/api/chat?all=true", { method: "DELETE" });
     if (res.ok) {
+      toast.success("All conversations cleared");
       startNewConversation();
       loadConversations();
     }
@@ -271,6 +275,7 @@ export function ChatPanel() {
                         const tripRef = tripId ? ` Use tripId="${tripId}".` : "";
                         const selectMsg = `CONFIRM: Add ${offer.airlines[0]} ${seg?.flightNumber || ""} (${seg?.origin}→${lastSeg?.destination}, departs ${seg?.departureTime || ""}, arrives ${lastSeg?.arrivalTime || ""}, $${offer.totalPrice} ${offer.currency}) to my trip.${tripRef} Do NOT create a new trip — use add_flight_to_trip tool immediately with the existing trip.`;
                         chatStore.sendMessage(selectMsg, modelId);
+                        toast.info(`Adding ${offer.airlines[0]} ${seg?.flightNumber || ""} to trip...`);
                       }}
                       onActionChip={(text: string) => {
                         chatStore.sendMessage(text, modelId);
@@ -285,11 +290,18 @@ export function ChatPanel() {
                         const tripRef = tripId ? ` Use tripId="${tripId}".` : "";
                         const selectMsg = `CONFIRM: Add ${offer.name} (${offer.starRating ? offer.starRating + "-star, " : ""}$${offer.pricePerNight}/night, ${offer.nights} nights, total $${offer.totalPrice}) to my trip as hotel.${tripRef} Do NOT create a new trip — use add_hotel_to_trip tool immediately.`;
                         chatStore.sendMessage(selectMsg, modelId);
+                        toast.info(`Adding ${offer.name} to trip...`);
                       }}
                       onActionChip={(text: string) => {
                         chatStore.sendMessage(text, modelId);
                       }}
                     />
+                  )}
+                  {/* Show skeleton while searching */}
+                  {msg.role === "assistant" && msg.content.startsWith("🔍") && isLoading && msg === messages[messages.length - 1] && (
+                    msg.content.toLowerCase().includes("hotel")
+                      ? <HotelSearchSkeleton />
+                      : <FlightSearchSkeleton />
                   )}
                   <ChatMessage
                     role={msg.role}

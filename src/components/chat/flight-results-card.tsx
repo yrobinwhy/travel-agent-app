@@ -195,7 +195,7 @@ export function FlightResultsCard({ results, onSelectFlight, onActionChip }: Fli
                   onClick={() => handleSelect(offer)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleSelect(offer); }}
                   className={cn(
-                    "w-full px-4 py-3 flex items-center gap-3 transition-all text-left cursor-pointer",
+                    "w-full px-4 py-3 flex flex-wrap md:flex-nowrap items-center gap-2 md:gap-3 transition-all text-left cursor-pointer",
                     isSelected
                       ? "bg-emerald-500/15 ring-1 ring-inset ring-emerald-500/30"
                       : "hover:bg-muted/50",

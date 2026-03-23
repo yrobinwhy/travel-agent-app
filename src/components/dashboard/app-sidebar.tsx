@@ -49,6 +49,7 @@ interface NavItem {
   title: string;
   href: string;
   icon: LucideIcon;
+  badge?: boolean; // Show notification dot
 }
 
 const mainNav: NavItem[] = [
@@ -64,7 +65,7 @@ const manageNav: NavItem[] = [
 ];
 
 const insightNav: NavItem[] = [
-  { title: "Alerts", href: "/alerts", icon: Bell },
+  { title: "Alerts", href: "/alerts", icon: Bell, badge: true },
   { title: "Tips & Deals", href: "/tips", icon: TrendingUp },
   { title: "Expenses", href: "/expenses", icon: Receipt },
   { title: "Travel History", href: "/history", icon: History },
@@ -103,6 +104,9 @@ function NavGroup({
               >
                 <item.icon className="size-4" />
                 <span>{item.title}</span>
+                {item.badge && (
+                  <span className="ml-auto flex h-2 w-2 rounded-full bg-emerald-500" />
+                )}
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}

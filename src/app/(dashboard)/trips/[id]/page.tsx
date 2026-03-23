@@ -109,13 +109,13 @@ export default async function TripDetailPage({
       <header className="flex h-14 items-center gap-4 border-b px-6">
         <SidebarTrigger />
         <Separator orientation="vertical" className="h-6" />
-        <Link
-          href="/trips"
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <h1 className="text-lg font-semibold">{trip.title}</h1>
+        <nav className="flex items-center gap-1.5 text-sm">
+          <Link href="/trips" className="text-muted-foreground hover:text-foreground transition-colors">
+            Trips
+          </Link>
+          <span className="text-muted-foreground/40">/</span>
+          <span className="font-semibold truncate max-w-[200px]">{trip.title}</span>
+        </nav>
         <Badge
           variant="outline"
           className={statusColors[trip.status] || ""}

@@ -89,7 +89,7 @@ export const ChatMessage = memo(function ChatMessage({
               <span className="inline-block w-2 h-4 bg-emerald-500 animate-pulse rounded-sm mt-1" />
             )}
             {!isStreaming && modelName && (
-              <p className="text-[10px] text-muted-foreground/40 mt-3 pt-2 border-t border-border/20">
+              <p className="text-[10px] text-muted-foreground/60 mt-3 pt-2 border-t border-border/20">
                 {modelName}
               </p>
             )}
