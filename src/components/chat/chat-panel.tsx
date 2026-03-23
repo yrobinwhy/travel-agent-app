@@ -6,6 +6,8 @@ import { ChatInput } from "./chat-input";
 import { ModelSelector } from "./model-selector";
 import { FlightResultsCard } from "./flight-results-card";
 import type { FlightOffer, FlightResultData } from "./flight-results-card";
+import { HotelResultsCard } from "./hotel-results-card";
+import type { HotelOfferDisplay, HotelResultData } from "./hotel-results-card";
 import { DEFAULT_MODEL_ID, AVAILABLE_MODELS } from "@/lib/ai/providers";
 import { chatStore } from "@/lib/chat-store";
 import type { ChatMessage as StoreChatMessage } from "@/lib/chat-store";
@@ -268,6 +270,20 @@ export function ChatPanel() {
                         const tripId = chatStore.getActiveTripId();
                         const tripRef = tripId ? ` Use tripId="${tripId}".` : "";
                         const selectMsg = `CONFIRM: Add ${offer.airlines[0]} ${seg?.flightNumber || ""} (${seg?.origin}→${lastSeg?.destination}, departs ${seg?.departureTime || ""}, arrives ${lastSeg?.arrivalTime || ""}, $${offer.totalPrice} ${offer.currency}) to my trip.${tripRef} Do NOT create a new trip — use add_flight_to_trip tool immediately with the existing trip.`;
+                        chatStore.sendMessage(selectMsg, modelId);
+                      }}
+                      onActionChip={(text: string) => {
+                        chatStore.sendMessage(text, modelId);
+                      }}
+                    />
+                  )}
+                  {msg.hotelResults && (
+                    <HotelResultsCard
+                      results={msg.hotelResults as unknown as HotelResultData}
+                      onSelectHotel={(offer: HotelOfferDisplay) => {
+                        const tripId = chatStore.getActiveTripId();
+                        const tripRef = tripId ? ` Use tripId="${tripId}".` : "";
+                        const selectMsg = `CONFIRM: Add ${offer.name} (${offer.starRating ? offer.starRating + "-star, " : ""}$${offer.pricePerNight}/night, ${offer.nights} nights, total $${offer.totalPrice}) to my trip as hotel.${tripRef} Do NOT create a new trip — use add_hotel_to_trip tool immediately.`;
                         chatStore.sendMessage(selectMsg, modelId);
                       }}
                       onActionChip={(text: string) => {
