@@ -13,26 +13,26 @@ const MODEL_CHOICES = [
   {
     id: "claude-sonnet",
     label: "Smart",
-    version: "Sonnet 4.6",
+    detail: "Claude Sonnet 4.6",
     icon: Sparkles,
-    recommended: true,
-    hasTools: true,
+    tag: "★ Recommended",
+    tagStyle: "bg-emerald-500/15 text-emerald-400",
   },
   {
     id: "gemini-flash",
     label: "Fast",
-    version: "Gemini 3",
+    detail: "Gemini 3 Flash",
     icon: Zap,
-    recommended: false,
-    hasTools: false,
+    tag: null,
+    tagStyle: "",
   },
   {
     id: "gemini-pro",
-    label: "Search",
-    version: "Gemini 3.1 Pro",
+    label: "Research",
+    detail: "Gemini 3.1 Pro",
     icon: Globe,
-    recommended: false,
-    hasTools: false,
+    tag: "No flight tools",
+    tagStyle: "bg-amber-500/10 text-amber-500",
   },
 ];
 
@@ -68,7 +68,7 @@ export function ModelSelector({
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-56 rounded-lg border border-border/60 bg-popover shadow-lg z-50 py-1">
+        <div className="absolute top-full left-0 mt-1 min-w-[240px] rounded-lg border border-border/60 bg-popover shadow-lg z-50 py-1">
           {MODEL_CHOICES.map((model) => {
             const isSelected = model.id === selectedModelId;
             const Icon = model.icon;
@@ -81,30 +81,39 @@ export function ModelSelector({
                   setOpen(false);
                 }}
                 className={cn(
-                  "w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors",
-                  isSelected
-                    ? "bg-emerald-500/10"
-                    : "hover:bg-muted/50"
+                  "w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors",
+                  isSelected ? "bg-emerald-500/10" : "hover:bg-muted/50"
                 )}
               >
-                <Icon className={cn("w-3.5 h-3.5 flex-shrink-0", isSelected ? "text-emerald-400" : "text-muted-foreground")} />
-                <span className={cn("text-sm font-medium", isSelected && "text-emerald-400")}>
-                  {model.label}
-                </span>
-                <span className="text-[10px] text-muted-foreground/50">
-                  {model.version}
-                </span>
-                {model.recommended && (
-                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">
-                    ★
+                <Icon className={cn(
+                  "w-4 h-4 flex-shrink-0",
+                  isSelected ? "text-emerald-400" : "text-muted-foreground"
+                )} />
+
+                <div className="flex-1 flex items-baseline gap-2 min-w-0">
+                  <span className={cn(
+                    "text-sm font-medium whitespace-nowrap",
+                    isSelected && "text-emerald-400"
+                  )}>
+                    {model.label}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground/50 whitespace-nowrap">
+                    {model.detail}
+                  </span>
+                </div>
+
+                {model.tag && (
+                  <span className={cn(
+                    "text-[9px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap flex-shrink-0",
+                    model.tagStyle
+                  )}>
+                    {model.tag}
                   </span>
                 )}
-                {!model.hasTools && (
-                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400">
-                    no tools
-                  </span>
+
+                {isSelected && (
+                  <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
                 )}
-                {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400 ml-auto" />}
               </button>
             );
           })}
