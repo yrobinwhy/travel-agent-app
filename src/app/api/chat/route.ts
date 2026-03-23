@@ -11,8 +11,10 @@ import {
   FLIGHT_SEARCH_TOOL,
   parseToolCall,
 } from "@/lib/ai/tools/flight-search";
+import { ALL_TRIP_TOOLS } from "@/lib/ai/tools/trip-tools";
 import { searchFlights } from "@/lib/flights";
 import type { FlightSearchResult } from "@/lib/flights";
+import { createTripFromChat, addSegmentToTrip, addBookingToTrip } from "@/lib/db/queries/trips";
 import { eq, asc, desc } from "drizzle-orm";
 import type { ChatMessage } from "@/lib/ai/providers";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
@@ -28,6 +30,7 @@ export async function POST(request: Request) {
   if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
   }
+  const userId = session.user.id;
 
   const body = await request.json();
   const {
@@ -41,7 +44,7 @@ export async function POST(request: Request) {
   };
 
   // Rate limit (async for Redis support)
-  const rl = await rateLimit(session.user.id, "chat", RATE_LIMITS.chat);
+  const rl = await rateLimit(userId, "chat", RATE_LIMITS.chat);
   if (!rl.allowed) {
     return Response.json(
       { error: "Too many messages. Please wait a moment." },
@@ -71,14 +74,14 @@ export async function POST(request: Request) {
       .select()
       .from(conversations)
       .where(eq(conversations.id, convId));
-    if (!existingConv || existingConv.userId !== session.user.id) {
+    if (!existingConv || existingConv.userId !== userId) {
       return Response.json({ error: "Conversation not found" }, { status: 404 });
     }
   } else {
     const [newConv] = await db
       .insert(conversations)
       .values({
-        userId: session.user.id,
+        userId: userId,
         title: message.slice(0, 100),
         modelUsed: model.id,
       })
@@ -109,7 +112,9 @@ export async function POST(request: Request) {
 
   // Only provide tools for Claude (Anthropic)
   const tools =
-    model.provider === "anthropic" ? [FLIGHT_SEARCH_TOOL] : undefined;
+    model.provider === "anthropic"
+      ? [FLIGHT_SEARCH_TOOL, ...ALL_TRIP_TOOLS]
+      : undefined;
 
   // Stream response
   const encoder = new TextEncoder();
@@ -158,7 +163,109 @@ export async function POST(request: Request) {
         }
 
         if (hasToolCalls) {
-          // Process all flight search tool calls in parallel
+          // Process trip management tools first (create_trip, add_flight, add_hotel)
+          const tripCalls = toolCalls.filter(
+            (tc) => tc.toolName === "create_trip"
+          );
+          const addFlightCalls = toolCalls.filter(
+            (tc) => tc.toolName === "add_flight_to_trip"
+          );
+          const addHotelCalls = toolCalls.filter(
+            (tc) => tc.toolName === "add_hotel_to_trip"
+          );
+
+          // Handle create_trip
+          for (const tc of tripCalls) {
+            try {
+              const input = tc.toolInput;
+              const trip = await createTripFromChat({
+                title: input.title as string,
+                destinationCity: input.destinationCity as string | undefined,
+                destinationCountry: input.destinationCountry as string | undefined,
+                startDate: input.startDate as string | undefined,
+                endDate: input.endDate as string | undefined,
+                conversationId: convId,
+                userId: userId,
+              });
+              send({
+                type: "trip_created",
+                content: JSON.stringify({ tripId: trip.id, title: trip.title }),
+              });
+              // Store tripId for subsequent add_flight/add_hotel calls
+              fullContent += `\n[Trip created: ${trip.title} (ID: ${trip.id})]`;
+            } catch {
+              send({ type: "status", content: "Could not create trip automatically." });
+            }
+          }
+
+          // Handle add_flight_to_trip
+          for (const tc of addFlightCalls) {
+            try {
+              const input = tc.toolInput;
+              await addSegmentToTrip({
+                tripId: input.tripId as string,
+                type: "flight",
+                title: `${input.carrier || ""} ${input.flightNumber || ""} · ${input.origin} → ${input.destination}`.trim(),
+                carrier: input.carrier as string | undefined,
+                flightNumber: input.flightNumber as string | undefined,
+                origin: input.origin as string,
+                destination: input.destination as string,
+                cabinClass: input.cabinClass as string | undefined,
+                startAt: input.departureTime ? new Date(input.departureTime as string) : undefined,
+                endAt: input.arrivalTime ? new Date(input.arrivalTime as string) : undefined,
+                details: { price: input.price, currency: input.currency },
+              });
+              if (input.price) {
+                await addBookingToTrip({
+                  tripId: input.tripId as string,
+                  userId: userId,
+                  type: "flight",
+                  vendorName: input.carrier as string | undefined,
+                  totalCost: input.price as number | undefined,
+                  currency: (input.currency as string) || "USD",
+                  status: "draft",
+                });
+              }
+              send({ type: "status", content: `Flight added to trip.` });
+            } catch {
+              send({ type: "status", content: "Could not add flight to trip." });
+            }
+          }
+
+          // Handle add_hotel_to_trip
+          for (const tc of addHotelCalls) {
+            try {
+              const input = tc.toolInput;
+              await addSegmentToTrip({
+                tripId: input.tripId as string,
+                type: "hotel_night",
+                title: input.hotelName as string,
+                locationName: input.hotelName as string,
+                locationAddress: input.address as string | undefined,
+                startAt: input.checkIn ? new Date(input.checkIn as string) : undefined,
+                endAt: input.checkOut ? new Date(input.checkOut as string) : undefined,
+                details: { price: input.price, currency: input.currency },
+              });
+              if (input.price) {
+                await addBookingToTrip({
+                  tripId: input.tripId as string,
+                  userId: userId,
+                  type: "hotel",
+                  vendorName: input.hotelName as string,
+                  totalCost: input.price as number | undefined,
+                  currency: (input.currency as string) || "USD",
+                  status: "draft",
+                  checkInAt: input.checkIn ? new Date(input.checkIn as string) : undefined,
+                  checkOutAt: input.checkOut ? new Date(input.checkOut as string) : undefined,
+                });
+              }
+              send({ type: "status", content: `Hotel added to trip.` });
+            } catch {
+              send({ type: "status", content: "Could not add hotel to trip." });
+            }
+          }
+
+          // Process flight search tool calls
           const flightCalls = toolCalls.filter(
             (tc) => tc.toolName === "search_flights"
           );
@@ -292,6 +399,24 @@ export async function POST(request: Request) {
             });
 
             send({ type: "done", conversationId: convId });
+          } else {
+            // Trip tools were called but no flight search — save what we have
+            if (fullContent) {
+              await db.insert(messages).values({
+                conversationId: convId!,
+                role: "assistant",
+                content: fullContent,
+                modelUsed: model.apiModelId,
+                toolCalls: {
+                  tripActions: {
+                    created: tripCalls.length,
+                    flightsAdded: addFlightCalls.length,
+                    hotelsAdded: addHotelCalls.length,
+                  },
+                },
+              });
+            }
+            send({ type: "done", conversationId: convId });
           }
         } else {
           // No tool calls — save the streamed text
@@ -330,9 +455,10 @@ export async function GET(request: Request) {
   if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
   }
+  const userId = session.user.id;
 
   // Rate limit reads
-  const rl = await rateLimit(session.user.id, "chatRead", RATE_LIMITS.chatRead);
+  const rl = await rateLimit(userId, "chatRead", RATE_LIMITS.chatRead);
   if (!rl.allowed) {
     return Response.json({ error: "Too many requests" }, { status: 429 });
   }
@@ -346,7 +472,7 @@ export async function GET(request: Request) {
       .select()
       .from(conversations)
       .where(eq(conversations.id, convId));
-    if (!conv || conv.userId !== session.user.id) {
+    if (!conv || conv.userId !== userId) {
       return Response.json({ error: "Not found" }, { status: 404 });
     }
 
@@ -362,7 +488,7 @@ export async function GET(request: Request) {
   const convs = await db
     .select()
     .from(conversations)
-    .where(eq(conversations.userId, session.user.id))
+    .where(eq(conversations.userId, userId))
     .orderBy(desc(conversations.createdAt))
     .limit(100); // Paginate conversations
 
@@ -375,9 +501,10 @@ export async function DELETE(request: Request) {
   if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
   }
+  const userId = session.user.id;
 
   // Rate limit deletes
-  const rl = await rateLimit(session.user.id, "chatDelete", RATE_LIMITS.chatDelete);
+  const rl = await rateLimit(userId, "chatDelete", RATE_LIMITS.chatDelete);
   if (!rl.allowed) {
     return Response.json({ error: "Too many requests" }, { status: 429 });
   }
@@ -390,7 +517,7 @@ export async function DELETE(request: Request) {
     const userConvs = await db
       .select({ id: conversations.id })
       .from(conversations)
-      .where(eq(conversations.userId, session.user.id));
+      .where(eq(conversations.userId, userId));
 
     for (const conv of userConvs) {
       await db.delete(messages).where(eq(messages.conversationId, conv.id));
@@ -408,7 +535,7 @@ export async function DELETE(request: Request) {
       .from(conversations)
       .where(eq(conversations.id, convId));
 
-    if (!conv || conv.userId !== session.user.id) {
+    if (!conv || conv.userId !== userId) {
       return Response.json({ error: "Not found" }, { status: 404 });
     }
 

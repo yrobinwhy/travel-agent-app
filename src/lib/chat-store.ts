@@ -11,12 +11,18 @@ type FlightResultData = {
   errors?: Array<{ provider: string; error: string }>;
 };
 
+type TripCreatedData = {
+  tripId: string;
+  title: string;
+};
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   modelUsed?: string;
   flightResults?: FlightResultData;
+  tripCreated?: TripCreatedData;
 }
 
 type Listener = () => void;
@@ -142,6 +148,15 @@ class ChatStore {
                 this.updateMessage(assistantId, {
                   flightResults: results,
                   content: "",
+                });
+              } catch {
+                /* skip parse errors */
+              }
+            } else if (event.type === "trip_created") {
+              try {
+                const tripData = JSON.parse(event.content);
+                this.updateMessage(assistantId, {
+                  tripCreated: tripData,
                 });
               } catch {
                 /* skip parse errors */

@@ -4,6 +4,7 @@ import { memo } from "react";
 import { cn } from "@/lib/utils";
 import { Bot, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -44,16 +45,35 @@ export const ChatMessage = memo(function ChatMessage({
             <div
               className={cn(
                 "prose prose-sm dark:prose-invert max-w-none",
+                // Paragraphs
                 "[&_p]:mb-2 [&_p:last-child]:mb-0",
+                // Lists
                 "[&_ul]:my-1 [&_ol]:my-1",
                 "[&_li]:my-0.5",
+                // Code
                 "[&_pre]:bg-background/50 [&_pre]:border [&_pre]:rounded-lg [&_pre]:p-3",
                 "[&_code]:text-emerald-400 [&_code]:text-xs",
-                "[&_table]:text-xs [&_th]:px-2 [&_td]:px-2",
-                "[&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm"
+                // Headings
+                "[&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:mt-3 [&_h2]:mt-2 [&_h3]:mt-2",
+                // Tables — proper styling for GFM tables
+                "[&_table]:w-full [&_table]:text-xs [&_table]:border-collapse [&_table]:my-2",
+                "[&_table]:rounded-lg [&_table]:overflow-hidden",
+                "[&_thead]:bg-muted/80 [&_thead]:dark:bg-muted/40",
+                "[&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-medium [&_th]:border-b [&_th]:border-border/50",
+                "[&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-border/30",
+                "[&_tr:last-child_td]:border-b-0",
+                "[&_tr:hover]:bg-muted/30",
+                // Blockquotes
+                "[&_blockquote]:border-l-2 [&_blockquote]:border-emerald-500/50 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-muted-foreground",
+                // Horizontal rules
+                "[&_hr]:border-border/50 [&_hr]:my-3",
+                // Strong
+                "[&_strong]:font-semibold"
               )}
             >
-              <ReactMarkdown skipHtml>{content || ""}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+                {content || ""}
+              </ReactMarkdown>
             </div>
             {isStreaming && (
               <span className="inline-block w-2 h-4 bg-emerald-500 animate-pulse rounded-sm" />

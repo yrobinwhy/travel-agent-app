@@ -360,15 +360,25 @@ export default async function TripDetailPage({
                   defaultValue={trip.endDate || ""}
                 />
               </div>
-              <div className="md:col-span-2 flex justify-between">
-                <form action={deleteTrip}>
-                  <input type="hidden" name="tripId" value={trip.id} />
-                  <Button type="submit" variant="ghost" size="sm" className="text-destructive hover:text-destructive">
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete Trip
-                  </Button>
-                </form>
+              <div className="md:col-span-2 flex justify-end">
                 <SubmitButton>Save Changes</SubmitButton>
               </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Delete Trip — separate form outside edit */}
+        <Card className="border-destructive/20">
+          <CardContent className="flex items-center justify-between py-4">
+            <div>
+              <p className="text-sm font-medium text-destructive">Delete Trip</p>
+              <p className="text-xs text-muted-foreground">This will permanently remove the trip and all itinerary items.</p>
+            </div>
+            <form action={deleteTrip}>
+              <input type="hidden" name="tripId" value={trip.id} />
+              <Button type="submit" variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10">
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+              </Button>
             </form>
           </CardContent>
         </Card>

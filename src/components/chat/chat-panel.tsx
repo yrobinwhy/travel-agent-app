@@ -245,6 +245,18 @@ export function ChatPanel() {
             <div className="max-w-3xl mx-auto py-4">
               {messages.map((msg: StoreChatMessage) => (
                 <div key={msg.id}>
+                  {msg.tripCreated && (
+                    <div className="mx-4 my-2">
+                      <a
+                        href={`/trips/${msg.tripCreated.tripId}`}
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                      >
+                        <Plane className="h-3.5 w-3.5" />
+                        Trip created: {msg.tripCreated.title}
+                        <span className="text-xs text-muted-foreground">→ View</span>
+                      </a>
+                    </div>
+                  )}
                   {msg.flightResults && (
                     <FlightResultsCard
                       results={msg.flightResults as FlightResultData}
