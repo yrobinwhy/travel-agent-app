@@ -264,8 +264,9 @@ export function ChatPanel() {
                       results={msg.flightResults as unknown as FlightResultData}
                       onSelectFlight={(offer: FlightOffer) => {
                         const seg = offer.outbound?.[0];
-                        const selectMsg = `I'd like to select the ${offer.airlines.join("/")} flight${seg?.flightNumber ? ` ${seg.flightNumber}` : ""} (${seg?.origin} → ${offer.outbound?.[offer.outbound.length - 1]?.destination}) at $${offer.totalPrice}${offer.refundable ? " (refundable)" : ""}. Please add it to my trip.`;
-                        setInput(selectMsg);
+                        const lastSeg = offer.outbound?.[offer.outbound.length - 1];
+                        const selectMsg = `CONFIRM: Add ${offer.airlines[0]} ${seg?.flightNumber || ""} (${seg?.origin}→${lastSeg?.destination}, ${seg?.departureTime ? new Date(seg.departureTime).toLocaleDateString() : ""}, $${offer.totalPrice} ${offer.currency}) to my trip. Do NOT search again — use the add_flight_to_trip tool immediately.`;
+                        chatStore.sendMessage(selectMsg, modelId);
                       }}
                       onActionChip={(text: string) => {
                         chatStore.sendMessage(text, modelId);
