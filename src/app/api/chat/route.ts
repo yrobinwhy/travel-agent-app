@@ -578,8 +578,16 @@ async function handleConfirmAction(message: string, userId: string, conversation
           const airlineMatch = message.match(/Add\s+(.+?)\s+([A-Z]{2}\d{1,4})/);
           const routeMatch = message.match(/\(([A-Z]{3})→([A-Z]{3})/);
           const priceMatch = message.match(/\$([0-9,.]+)/);
-          const departsMatch = message.match(/departs\s+(\S+)/);
-          const arrivesMatch = message.match(/arrives\s+(\S+)/);
+          // Match ISO datetime (2026-03-28T08:15:00) — strip trailing commas/parens
+          const departsMatch = message.match(/departs\s+([\d\-T:]+)/);
+          const arrivesMatch = message.match(/arrives\s+([\d\-T:]+)/);
+
+          // Safe date parsing — returns undefined if invalid
+          const safeDate = (s?: string) => {
+            if (!s) return undefined;
+            const d = new Date(s);
+            return isNaN(d.getTime()) ? undefined : d;
+          };
 
           await addSegmentToTrip({
             tripId,
@@ -589,8 +597,8 @@ async function handleConfirmAction(message: string, userId: string, conversation
             flightNumber: airlineMatch?.[2],
             origin: routeMatch?.[1],
             destination: routeMatch?.[2],
-            startAt: departsMatch?.[1] ? new Date(departsMatch[1]) : undefined,
-            endAt: arrivesMatch?.[1] ? new Date(arrivesMatch[1]) : undefined,
+            startAt: safeDate(departsMatch?.[1]),
+            endAt: safeDate(arrivesMatch?.[1]),
           });
 
           const price = priceMatch ? parseFloat(priceMatch[1].replace(",", "")) : undefined;
