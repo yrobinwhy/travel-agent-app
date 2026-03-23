@@ -8,10 +8,11 @@ import type {
 } from "./types";
 import { duffelProvider } from "./providers/duffel";
 import { serpapiProvider } from "./providers/serpapi";
+import { sabreProvider } from "./providers/sabre";
 
 export type { FlightSearchParams, FlightSearchResult, FlightOffer } from "./types";
 
-const providers: FlightSearchProvider[] = [duffelProvider, serpapiProvider];
+const providers: FlightSearchProvider[] = [duffelProvider, serpapiProvider, sabreProvider];
 
 /**
  * Search all available providers in parallel and merge results

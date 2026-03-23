@@ -12,6 +12,13 @@ type FlightResultData = {
   errors?: Array<{ provider: string; error: string }>;
 };
 
+type HotelResultData = {
+  offers: Array<Record<string, unknown>>;
+  cheapestPrice?: number;
+  providers: string[];
+  errors?: Array<{ provider: string; error: string }>;
+};
+
 type TripCreatedData = {
   tripId: string;
   title: string;
@@ -23,6 +30,7 @@ export interface ChatMessage {
   content: string;
   modelUsed?: string;
   flightResults?: FlightResultData;
+  hotelResults?: HotelResultData;
   tripCreated?: TripCreatedData;
 }
 
@@ -154,6 +162,16 @@ class ChatStore {
                 const results = JSON.parse(event.content);
                 this.updateMessage(assistantId, {
                   flightResults: results,
+                  content: "",
+                });
+              } catch {
+                /* skip parse errors */
+              }
+            } else if (event.type === "hotel_results") {
+              try {
+                const results = JSON.parse(event.content);
+                this.updateMessage(assistantId, {
+                  hotelResults: results,
                   content: "",
                 });
               } catch {

@@ -12,8 +12,11 @@ import {
   parseToolCall,
 } from "@/lib/ai/tools/flight-search";
 import { ALL_TRIP_TOOLS } from "@/lib/ai/tools/trip-tools";
+import { HOTEL_SEARCH_TOOL, parseHotelToolCall } from "@/lib/ai/tools/hotel-search";
 import { searchFlights } from "@/lib/flights";
 import type { FlightSearchResult } from "@/lib/flights";
+import { searchHotels } from "@/lib/hotels";
+import type { HotelSearchResult } from "@/lib/hotels";
 import { createTripFromChat, addSegmentToTrip, addBookingToTrip } from "@/lib/db/queries/trips";
 import { eq, asc, desc } from "drizzle-orm";
 import type { ChatMessage } from "@/lib/ai/providers";
@@ -113,7 +116,7 @@ export async function POST(request: Request) {
   // Only provide tools for Claude (Anthropic)
   const tools =
     model.provider === "anthropic"
-      ? [FLIGHT_SEARCH_TOOL, ...ALL_TRIP_TOOLS]
+      ? [FLIGHT_SEARCH_TOOL, HOTEL_SEARCH_TOOL, ...ALL_TRIP_TOOLS]
       : undefined;
 
   // Stream response
@@ -398,8 +401,90 @@ export async function POST(request: Request) {
             });
 
             send({ type: "done", conversationId: convId });
-          } else {
-            // Trip tools were called but no flight search — save what we have
+          }
+
+          // Process hotel search tool calls
+          const hotelCalls = toolCalls.filter(
+            (tc) => tc.toolName === "search_hotels"
+          );
+
+          if (hotelCalls.length > 0 && flightCalls.length === 0) {
+            send({
+              type: "status",
+              content: "Searching hotels...",
+            });
+
+            const hotelParams = parseHotelToolCall(hotelCalls[0].toolInput);
+            try {
+              const hotelResult = await searchHotels(hotelParams);
+
+              send({
+                type: "hotel_results",
+                content: JSON.stringify(hotelResult),
+              });
+
+              // Ask LLM to summarize hotel results
+              const topHotels = hotelResult.offers.slice(0, 6).map((h) => ({
+                name: h.name,
+                stars: h.starRating,
+                rating: h.guestRating,
+                ratingText: h.guestRatingText,
+                reviews: h.reviewCount,
+                pricePerNight: `${h.currency} ${h.pricePerNight}`,
+                total: `${h.currency} ${h.totalPrice}`,
+                nights: h.nights,
+                amenities: h.amenities.slice(0, 5),
+                freeCancellation: h.freeCancellation,
+                deal: h.dealLabel,
+                neighborhood: h.neighborhood,
+              }));
+
+              const hotelSummaryMessages: ChatMessage[] = [
+                ...chatMessages,
+                {
+                  role: "assistant",
+                  content: `I searched for hotels and found ${hotelResult.offers.length} options. Top results: ${JSON.stringify(topHotels)}`,
+                },
+                {
+                  role: "user",
+                  content: "Present these hotel options clearly. Highlight best value and best rated. Include price per night, rating, key amenities. Keep it conversational.",
+                },
+              ];
+
+              const hotelSummaryGen = provider.chatStream({
+                model,
+                messages: hotelSummaryMessages,
+                systemPrompt: TRAVEL_CONCIERGE_SYSTEM_PROMPT,
+                stream: true,
+              });
+
+              for await (const chunk of hotelSummaryGen) {
+                if (chunk.type === "text") {
+                  fullContent += chunk.content;
+                  send({ type: "text", content: chunk.content });
+                }
+              }
+
+              await db.insert(messages).values({
+                conversationId: convId!,
+                role: "assistant",
+                content: fullContent,
+                modelUsed: model.apiModelId,
+                toolCalls: {
+                  hotelSearch: {
+                    resultCount: hotelResult.offers.length,
+                    cheapest: hotelResult.cheapestPrice,
+                  },
+                },
+              });
+
+              send({ type: "done", conversationId: convId });
+            } catch (err) {
+              send({ type: "error", content: `Hotel search failed: ${err instanceof Error ? err.message : "Unknown error"}` });
+              send({ type: "done", conversationId: convId });
+            }
+          } else if (flightCalls.length === 0 && hotelCalls.length === 0) {
+            // Trip tools were called but no search — save what we have
             if (fullContent) {
               await db.insert(messages).values({
                 conversationId: convId!,

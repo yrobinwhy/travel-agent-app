@@ -32,7 +32,7 @@ export interface FlightSegment {
 
 export interface FlightOffer {
   id: string;
-  provider: "duffel" | "serpapi" | "kiwi";
+  provider: "duffel" | "serpapi" | "sabre" | "kiwi";
   providerOfferId: string; // Original ID from provider for booking
   // Pricing
   totalPrice: number;
