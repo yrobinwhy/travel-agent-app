@@ -343,6 +343,40 @@ export async function getUserPointBalances() {
     .where(eq(pointBalances.userId, user.id!));
 }
 
+// Chat-callable version
+export async function savePointBalanceFromChat(data: {
+  userId: string;
+  program: string;
+  programName: string;
+  balance: number;
+}) {
+  const existing = await db
+    .select()
+    .from(pointBalances)
+    .where(
+      and(
+        eq(pointBalances.userId, data.userId),
+        eq(pointBalances.program, data.program)
+      )
+    );
+
+  if (existing.length > 0) {
+    await db
+      .update(pointBalances)
+      .set({ balance: data.balance, lastUpdated: new Date(), programName: data.programName })
+      .where(eq(pointBalances.id, existing[0].id));
+    return { action: "updated" as const };
+  } else {
+    await db.insert(pointBalances).values({
+      userId: data.userId,
+      program: data.program,
+      programName: data.programName,
+      balance: data.balance,
+    });
+    return { action: "created" as const };
+  }
+}
+
 export async function upsertPointBalance(formData: FormData) {
   const user = await getUser();
   const program = formData.get("program") as string;

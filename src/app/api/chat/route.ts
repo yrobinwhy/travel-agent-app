@@ -13,7 +13,7 @@ import {
 } from "@/lib/ai/tools/flight-search";
 import { ALL_TRIP_TOOLS } from "@/lib/ai/tools/trip-tools";
 import { ALL_LOYALTY_TOOLS } from "@/lib/ai/tools/loyalty-tools";
-import { saveFFProgramFromChat, saveHotelProgramFromChat } from "@/lib/db/queries/loyalty";
+import { saveFFProgramFromChat, saveHotelProgramFromChat, savePointBalanceFromChat } from "@/lib/db/queries/loyalty";
 import { HOTEL_SEARCH_TOOL, parseHotelToolCall } from "@/lib/ai/tools/hotel-search";
 import { searchFlights } from "@/lib/flights";
 import type { FlightSearchResult } from "@/lib/flights";
@@ -309,6 +309,28 @@ export async function POST(request: Request) {
               }
             } catch {
               send({ type: "status", content: "Could not save loyalty program." });
+            }
+          }
+
+          // Handle save_point_balance
+          const balanceCalls = toolCalls.filter(
+            (tc) => tc.toolName === "save_point_balance"
+          );
+          for (const tc of balanceCalls) {
+            try {
+              const input = tc.toolInput;
+              const result = await savePointBalanceFromChat({
+                userId,
+                program: input.program as string,
+                programName: input.programName as string,
+                balance: input.balance as number,
+              });
+              send({
+                type: "status",
+                content: `✅ ${result.action === "created" ? "Saved" : "Updated"} ${input.programName}: ${Number(input.balance).toLocaleString()} points.`,
+              });
+            } catch {
+              send({ type: "status", content: "Could not save point balance." });
             }
           }
 

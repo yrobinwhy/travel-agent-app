@@ -4,6 +4,8 @@ import {
   getUserPointBalances,
   createFFProgram,
   createHotelProgram,
+  deleteFFProgram,
+  deleteHotelProgram,
   upsertPointBalance,
 } from "@/lib/db/queries/loyalty";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +15,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { Plane, Hotel, Coins, Plus, Info } from "lucide-react";
+import { Plane, Hotel, Coins, Plus, Info, Trash2 } from "lucide-react";
+
+async function deleteFF(formData: FormData) {
+  "use server";
+  const id = formData.get("id") as string;
+  await deleteFFProgram(id);
+}
+
+async function deleteHotel(formData: FormData) {
+  "use server";
+  const id = formData.get("id") as string;
+  await deleteHotelProgram(id);
+}
 
 export default async function PointsPage() {
   const [ffPrograms, hotelPrograms, pointBalances] = await Promise.all([
@@ -76,6 +90,12 @@ export default async function PointsPage() {
                       {p.priorityPhone && (
                         <span className="text-xs text-muted-foreground hidden md:block">{p.priorityPhone}</span>
                       )}
+                      <form action={deleteFF}>
+                        <input type="hidden" name="id" value={p.id} />
+                        <button type="submit" className="p-1 text-muted-foreground hover:text-destructive transition-colors" title="Delete program">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </form>
                     </div>
                   </div>
                 ))}
@@ -156,6 +176,12 @@ export default async function PointsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       {p.statusLevel && <Badge variant="secondary">{p.statusLevel}</Badge>}
+                      <form action={deleteHotel}>
+                        <input type="hidden" name="id" value={p.id} />
+                        <button type="submit" className="p-1 text-muted-foreground hover:text-destructive transition-colors" title="Delete program">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </form>
                     </div>
                   </div>
                 ))}
