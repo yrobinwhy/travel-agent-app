@@ -31,6 +31,7 @@ type Listener = () => void;
 class ChatStore {
   private messages: ChatMessage[] = [];
   private conversationId: string | null = null;
+  private activeTripId: string | null = null; // Track trip created in this conversation
   private isLoading = false;
   private listeners = new Set<Listener>();
   private abortController: AbortController | null = null;
@@ -52,6 +53,10 @@ class ChatStore {
     return this.conversationId;
   }
 
+  getActiveTripId() {
+    return this.activeTripId;
+  }
+
   getIsLoading() {
     return this.isLoading;
   }
@@ -69,6 +74,7 @@ class ChatStore {
   clearMessages() {
     this.messages = [];
     this.conversationId = null;
+    this.activeTripId = null;
     this.notify();
   }
 
@@ -156,6 +162,7 @@ class ChatStore {
             } else if (event.type === "trip_created") {
               try {
                 const tripData = JSON.parse(event.content);
+                this.activeTripId = tripData.tripId;
                 this.updateMessage(assistantId, {
                   tripCreated: tripData,
                 });
