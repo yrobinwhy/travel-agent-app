@@ -10,6 +10,7 @@ export interface HotelSearchParams {
   minPrice?: number;
   maxPrice?: number;
   minRating?: number; // 1-5
+  hotelClass?: number; // 2-5 star minimum
   amenities?: string[]; // e.g. ["wifi", "pool", "gym"]
   sortBy?: "price" | "rating" | "distance" | "value";
 }

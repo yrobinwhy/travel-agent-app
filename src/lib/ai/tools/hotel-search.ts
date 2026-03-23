@@ -33,7 +33,11 @@ export const HOTEL_SEARCH_TOOL = {
       },
       minRating: {
         type: "number",
-        description: "Minimum guest rating (1-5). Use 4 for the user's preference for quality.",
+        description: "Minimum guest rating (1-5). Default to 4 for quality. Only go lower if user explicitly asks for budget options.",
+      },
+      hotelClass: {
+        type: "number",
+        description: "Minimum hotel star class (2-5). Default to 4 for business travelers. Use 3 for budget requests.",
       },
       maxPrice: {
         type: "number",
@@ -58,7 +62,8 @@ export function parseHotelToolCall(
     checkOut: (args.checkOut as string) || "",
     guests: (args.guests as number) || 1,
     rooms: (args.rooms as number) || 1,
-    minRating: args.minRating as number | undefined,
+    minRating: (args.minRating as number) || 4,
+    hotelClass: (args.hotelClass as number) || 4,
     maxPrice: args.maxPrice as number | undefined,
     sortBy: (args.sortBy as HotelSearchParams["sortBy"]) || "value",
   };

@@ -44,6 +44,7 @@ export const serpapiHotelProvider: HotelSearchProvider = {
 
     if (params.minPrice) searchParams.set("min_price", String(params.minPrice));
     if (params.maxPrice) searchParams.set("max_price", String(params.maxPrice));
+    if (params.hotelClass) searchParams.set("hotel_class", String(params.hotelClass));
 
     const response = await fetch(
       `https://serpapi.com/search.json?${searchParams.toString()}`
