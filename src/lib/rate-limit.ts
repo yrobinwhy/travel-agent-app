@@ -10,8 +10,9 @@ let redisRatelimiters: Record<string, Ratelimit> | null = null;
 function getRedisLimiters(): Record<string, Ratelimit> | null {
   if (redisRatelimiters) return redisRatelimiters;
 
-  const url = process.env.KV_REST_API_URL;
-  const token = process.env.KV_REST_API_TOKEN;
+  // Support both Upstash direct and legacy Vercel KV env var names
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
   if (!url || !token) return null;
 
   const redis = new Redis({ url, token });
