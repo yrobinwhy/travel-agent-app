@@ -54,22 +54,20 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { title: "Chat", href: "/chat", icon: MessageSquare },
   { title: "Trips", href: "/trips", icon: Map },
-  { title: "Search", href: "/search", icon: Search },
   { title: "Bookings", href: "/bookings", icon: Plane },
 ];
 
 const manageNav: NavItem[] = [
   { title: "Points & Loyalty", href: "/points", icon: Star },
   { title: "Credit Cards", href: "/cards", icon: CreditCard },
-  { title: "Contacts", href: "/contacts", icon: Users },
-  { title: "Expenses", href: "/expenses", icon: Receipt },
+  { title: "Saved Routes", href: "/saved", icon: Bookmark },
 ];
 
 const insightNav: NavItem[] = [
+  { title: "Alerts", href: "/alerts", icon: Bell },
   { title: "Tips & Deals", href: "/tips", icon: TrendingUp },
+  { title: "Expenses", href: "/expenses", icon: Receipt },
   { title: "Travel History", href: "/history", icon: History },
-  { title: "Price Alerts", href: "/alerts", icon: Bell },
-  { title: "Saved", href: "/saved", icon: Bookmark },
 ];
 
 interface AppSidebarProps {
