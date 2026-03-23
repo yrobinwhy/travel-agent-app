@@ -86,7 +86,11 @@ export const sabreProvider: FlightSearchProvider = {
   name: "sabre",
 
   isAvailable(): boolean {
-    return !!(process.env.SABRE_CLIENT_ID && process.env.SABRE_CLIENT_SECRET);
+    // Disabled until Sabre agentic API access is granted
+    // BFM v1 is deprecated and sandbox returns processing errors
+    // Re-enable when SABRE_ENABLED=true is set
+    return process.env.SABRE_ENABLED === "true" &&
+      !!(process.env.SABRE_CLIENT_ID && process.env.SABRE_CLIENT_SECRET);
   },
 
   async search(params: FlightSearchParams): Promise<FlightOffer[]> {
