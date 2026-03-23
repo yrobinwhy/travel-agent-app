@@ -1,7 +1,6 @@
 "use client";
 
-import { AVAILABLE_MODELS, type ModelConfig } from "@/lib/ai/providers";
-import { ChevronDown, Cpu, Zap, Search, Brain } from "lucide-react";
+import { ChevronDown, Sparkles, Zap, Globe, Check } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
@@ -10,12 +9,32 @@ interface ModelSelectorProps {
   onModelChange: (modelId: string) => void;
 }
 
-const bestForIcons: Record<string, React.ReactNode> = {
-  reasoning: <Brain className="w-3 h-3" />,
-  fast: <Zap className="w-3 h-3" />,
-  search: <Search className="w-3 h-3" />,
-  general: <Cpu className="w-3 h-3" />,
-};
+const MODEL_CHOICES = [
+  {
+    id: "claude-sonnet",
+    label: "Smart",
+    version: "Sonnet 4.6",
+    icon: Sparkles,
+    recommended: true,
+    hasTools: true,
+  },
+  {
+    id: "gemini-flash",
+    label: "Fast",
+    version: "Gemini 3",
+    icon: Zap,
+    recommended: false,
+    hasTools: false,
+  },
+  {
+    id: "gemini-pro",
+    label: "Search",
+    version: "Gemini 3.1 Pro",
+    icon: Globe,
+    recommended: false,
+    hasTools: false,
+  },
+];
 
 export function ModelSelector({
   selectedModelId,
@@ -23,7 +42,7 @@ export function ModelSelector({
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const selected = AVAILABLE_MODELS.find((m) => m.id === selectedModelId);
+  const selected = MODEL_CHOICES.find((m) => m.id === selectedModelId) || MODEL_CHOICES[0];
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -39,43 +58,56 @@ export function ModelSelector({
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent hover:border-border/50 transition-all"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent hover:border-border/50 transition-all"
+        aria-label="Select AI model"
+        aria-expanded={open}
       >
-        {selected && bestForIcons[selected.bestFor]}
-        <span>{selected?.displayName || "Select Model"}</span>
-        <ChevronDown className="w-3 h-3" />
+        <selected.icon className="w-3.5 h-3.5" />
+        <span className="font-medium">{selected.label}</span>
+        <ChevronDown className={cn("w-3 h-3 transition-transform", open && "rotate-180")} />
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-72 rounded-xl border border-border/60 bg-popover shadow-xl z-50 p-1.5">
-          {AVAILABLE_MODELS.map((model) => (
-            <button
-              key={model.id}
-              onClick={() => {
-                onModelChange(model.id);
-                setOpen(false);
-              }}
-              className={cn(
-                "w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors",
-                model.id === selectedModelId
-                  ? "bg-emerald-500/10 text-emerald-400"
-                  : "hover:bg-muted/50"
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">
-                  {bestForIcons[model.bestFor]}
+        <div className="absolute top-full left-0 mt-1 w-56 rounded-lg border border-border/60 bg-popover shadow-lg z-50 py-1">
+          {MODEL_CHOICES.map((model) => {
+            const isSelected = model.id === selectedModelId;
+            const Icon = model.icon;
+
+            return (
+              <button
+                key={model.id}
+                onClick={() => {
+                  onModelChange(model.id);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors",
+                  isSelected
+                    ? "bg-emerald-500/10"
+                    : "hover:bg-muted/50"
+                )}
+              >
+                <Icon className={cn("w-3.5 h-3.5 flex-shrink-0", isSelected ? "text-emerald-400" : "text-muted-foreground")} />
+                <span className={cn("text-sm font-medium", isSelected && "text-emerald-400")}>
+                  {model.label}
                 </span>
-                <span className="font-medium">{model.displayName}</span>
-                <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground/60 px-1.5 py-0.5 rounded bg-muted/50">
-                  {model.provider}
+                <span className="text-[10px] text-muted-foreground/50">
+                  {model.version}
                 </span>
-              </div>
-              <p className="text-xs text-muted-foreground/70 mt-0.5 ml-5">
-                {model.description}
-              </p>
-            </button>
-          ))}
+                {model.recommended && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">
+                    ★
+                  </span>
+                )}
+                {!model.hasTools && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400">
+                    no tools
+                  </span>
+                )}
+                {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400 ml-auto" />}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

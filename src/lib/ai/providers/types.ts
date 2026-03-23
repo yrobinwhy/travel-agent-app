@@ -50,6 +50,7 @@ export interface LLMProvider {
 }
 
 // Available models - add new ones here
+// Last reviewed: 2026-03-22
 export const AVAILABLE_MODELS: ModelConfig[] = [
   // ── Anthropic ──
   {
@@ -58,45 +59,37 @@ export const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "anthropic",
     apiModelId: "claude-sonnet-4-6",
     maxTokens: 16384,
-    description: "Best for travel planning, reasoning, and complex itineraries",
+    description: "Best for travel planning — precise tool use, consistent outputs, strong system prompt adherence",
     bestFor: "reasoning",
   },
+  // ── Google ──
+  {
+    id: "gemini-flash",
+    displayName: "Gemini 3 Flash",
+    provider: "google",
+    apiModelId: "gemini-3-flash-preview",
+    maxTokens: 8192,
+    description: "Fast and cost-effective — good for quick questions and general travel advice",
+    bestFor: "fast",
+  },
+  {
+    id: "gemini-pro",
+    displayName: "Gemini 3.1 Pro",
+    provider: "google",
+    apiModelId: "gemini-3.1-pro-preview",
+    maxTokens: 16384,
+    description: "Search grounded — best for hotel reviews, visa info, real-time travel research",
+    bestFor: "search",
+  },
+  // ── Legacy (kept for conversation history compatibility) ──
   {
     id: "claude-haiku",
     displayName: "Claude Haiku 4.5",
     provider: "anthropic",
     apiModelId: "claude-haiku-4-5-20251001",
     maxTokens: 8192,
-    description: "Fast responses for quick queries and intent parsing",
+    description: "Legacy fast model — use Gemini 3 Flash instead",
     bestFor: "fast",
-  },
-  // ── Google ──
-  {
-    id: "gemini-flash",
-    displayName: "Gemini 2.5 Flash",
-    provider: "google",
-    apiModelId: "gemini-2.5-flash",
-    maxTokens: 8192,
-    description: "Fast reasoning with search grounding for flight lookups",
-    bestFor: "search",
-  },
-  {
-    id: "gemini-flash-lite",
-    displayName: "Gemini 2.5 Flash Lite",
-    provider: "google",
-    apiModelId: "gemini-2.5-flash-lite",
-    maxTokens: 8192,
-    description: "Fastest and most cost-effective for high-volume queries",
-    bestFor: "fast",
-  },
-  {
-    id: "gemini-pro",
-    displayName: "Gemini 2.5 Pro",
-    provider: "google",
-    apiModelId: "gemini-2.5-pro",
-    maxTokens: 8192,
-    description: "Deep reasoning and complex problem solving with search",
-    bestFor: "reasoning",
   },
 ];
 

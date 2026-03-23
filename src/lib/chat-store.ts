@@ -3,13 +3,9 @@
 // Global chat store — survives navigation between pages
 // The SSE stream runs detached from React lifecycle
 
-type FlightResultData = {
-  offers: Array<Record<string, unknown>>;
-  cheapestPrice?: number;
-  fastestDuration?: string;
-  providers: string[];
-  errors?: Array<{ provider: string; error: string }>;
-};
+// Use the same type as the flight results card component
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type FlightResultData = any;
 
 type TripCreatedData = {
   tripId: string;

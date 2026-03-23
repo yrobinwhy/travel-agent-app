@@ -191,8 +191,7 @@ export async function POST(request: Request) {
                 type: "trip_created",
                 content: JSON.stringify({ tripId: trip.id, title: trip.title }),
               });
-              // Store tripId for subsequent add_flight/add_hotel calls
-              fullContent += `\n[Trip created: ${trip.title} (ID: ${trip.id})]`;
+              // tripId is sent to client via trip_created event — don't add to fullContent
             } catch {
               send({ type: "status", content: "Could not create trip automatically." });
             }
