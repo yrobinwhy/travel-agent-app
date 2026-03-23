@@ -12,6 +12,8 @@ import {
   parseToolCall,
 } from "@/lib/ai/tools/flight-search";
 import { ALL_TRIP_TOOLS } from "@/lib/ai/tools/trip-tools";
+import { ALL_LOYALTY_TOOLS } from "@/lib/ai/tools/loyalty-tools";
+import { saveFFProgramFromChat, saveHotelProgramFromChat } from "@/lib/db/queries/loyalty";
 import { HOTEL_SEARCH_TOOL, parseHotelToolCall } from "@/lib/ai/tools/hotel-search";
 import { searchFlights } from "@/lib/flights";
 import type { FlightSearchResult } from "@/lib/flights";
@@ -122,7 +124,7 @@ export async function POST(request: Request) {
   // Only provide tools for Claude (Anthropic)
   const tools =
     model.provider === "anthropic"
-      ? [FLIGHT_SEARCH_TOOL, HOTEL_SEARCH_TOOL, ...ALL_TRIP_TOOLS]
+      ? [FLIGHT_SEARCH_TOOL, HOTEL_SEARCH_TOOL, ...ALL_TRIP_TOOLS, ...ALL_LOYALTY_TOOLS]
       : undefined;
 
   // Stream response
@@ -270,6 +272,43 @@ export async function POST(request: Request) {
               send({ type: "status", content: `Hotel added to trip.` });
             } catch {
               send({ type: "status", content: "Could not add hotel to trip." });
+            }
+          }
+
+          // Handle save_loyalty_program
+          const loyaltyCalls = toolCalls.filter(
+            (tc) => tc.toolName === "save_loyalty_program"
+          );
+          for (const tc of loyaltyCalls) {
+            try {
+              const input = tc.toolInput;
+              const type = input.type as string;
+              const code = input.code as string;
+              const programName = input.programName as string;
+              const memberNumber = input.memberNumber as string | undefined;
+              const statusLevel = input.statusLevel as string | undefined;
+
+              if (type === "airline") {
+                const result = await saveFFProgramFromChat({
+                  userId,
+                  airlineCode: code,
+                  programName,
+                  memberNumber,
+                  statusLevel,
+                });
+                send({ type: "status", content: `✅ ${result.action === "created" ? "Saved" : "Updated"} ${programName}${memberNumber ? ` (${memberNumber.slice(-4)})` : ""}${statusLevel ? ` — ${statusLevel}` : ""} to your loyalty programs.` });
+              } else {
+                const result = await saveHotelProgramFromChat({
+                  userId,
+                  hotelChain: code,
+                  programName,
+                  memberNumber,
+                  statusLevel,
+                });
+                send({ type: "status", content: `✅ ${result.action === "created" ? "Saved" : "Updated"} ${programName}${memberNumber ? ` (${memberNumber.slice(-4)})` : ""}${statusLevel ? ` — ${statusLevel}` : ""} to your loyalty programs.` });
+              }
+            } catch {
+              send({ type: "status", content: "Could not save loyalty program." });
             }
           }
 

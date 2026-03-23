@@ -82,6 +82,95 @@ export async function updateFFProgram(formData: FormData) {
   revalidatePath("/cards");
 }
 
+// Chat-callable version — no formData, accepts userId directly
+export async function saveFFProgramFromChat(data: {
+  userId: string;
+  airlineCode: string;
+  programName: string;
+  memberNumber?: string;
+  statusLevel?: string;
+}) {
+  // Check if program already exists for this user + airline
+  const existing = await db
+    .select()
+    .from(ffPrograms)
+    .where(
+      and(
+        eq(ffPrograms.userId, data.userId),
+        eq(ffPrograms.airlineCode, data.airlineCode.toUpperCase())
+      )
+    );
+
+  if (existing.length > 0) {
+    // Update existing
+    await db
+      .update(ffPrograms)
+      .set({
+        programName: data.programName || existing[0].programName,
+        memberNumberEnc: data.memberNumber ? encrypt(data.memberNumber) : existing[0].memberNumberEnc,
+        statusLevel: data.statusLevel || existing[0].statusLevel,
+        updatedAt: new Date(),
+      })
+      .where(eq(ffPrograms.id, existing[0].id));
+    return { action: "updated", id: existing[0].id };
+  } else {
+    const [program] = await db
+      .insert(ffPrograms)
+      .values({
+        userId: data.userId,
+        airlineCode: data.airlineCode.toUpperCase(),
+        programName: data.programName,
+        memberNumberEnc: data.memberNumber ? encrypt(data.memberNumber) : null,
+        statusLevel: data.statusLevel || null,
+      })
+      .returning();
+    return { action: "created", id: program.id };
+  }
+}
+
+export async function saveHotelProgramFromChat(data: {
+  userId: string;
+  hotelChain: string;
+  programName: string;
+  memberNumber?: string;
+  statusLevel?: string;
+}) {
+  const existing = await db
+    .select()
+    .from(hotelPrograms)
+    .where(
+      and(
+        eq(hotelPrograms.userId, data.userId),
+        eq(hotelPrograms.hotelChain, data.hotelChain)
+      )
+    );
+
+  if (existing.length > 0) {
+    await db
+      .update(hotelPrograms)
+      .set({
+        programName: data.programName || existing[0].programName,
+        memberNumberEnc: data.memberNumber ? encrypt(data.memberNumber) : existing[0].memberNumberEnc,
+        statusLevel: data.statusLevel || existing[0].statusLevel,
+        updatedAt: new Date(),
+      })
+      .where(eq(hotelPrograms.id, existing[0].id));
+    return { action: "updated", id: existing[0].id };
+  } else {
+    const [program] = await db
+      .insert(hotelPrograms)
+      .values({
+        userId: data.userId,
+        hotelChain: data.hotelChain,
+        programName: data.programName,
+        memberNumberEnc: data.memberNumber ? encrypt(data.memberNumber) : null,
+        statusLevel: data.statusLevel || null,
+      })
+      .returning();
+    return { action: "created", id: program.id };
+  }
+}
+
 export async function deleteFFProgram(id: string) {
   const user = await getUser();
   await db
