@@ -146,7 +146,12 @@ export default async function PointsPage() {
                       <Hotel className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-sm font-medium">{p.programName}</p>
-                        <p className="text-xs text-muted-foreground">{p.hotelChain}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-muted-foreground">{p.hotelChain}</p>
+                          {p.memberNumber && (
+                            <p className="text-xs text-muted-foreground font-mono">· {p.memberNumber}</p>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
