@@ -18,6 +18,7 @@ import type { FlightSearchResult } from "@/lib/flights";
 import { searchHotels } from "@/lib/hotels";
 import type { HotelSearchResult } from "@/lib/hotels";
 import { createTripFromChat, addSegmentToTrip, addBookingToTrip } from "@/lib/db/queries/trips";
+import { trips } from "@/lib/db/schema/trips";
 import { eq, asc, desc } from "drizzle-orm";
 import type { ChatMessage } from "@/lib/ai/providers";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
@@ -562,7 +563,22 @@ async function handleConfirmAction(message: string, userId: string, conversation
           send({ type: "meta", conversationId });
         }
 
-        // Create trip if none exists
+        // If no tripId in message, find the most recent active trip for this user
+        if (!tripId) {
+          const [recentTrip] = await db
+            .select()
+            .from(trips)
+            .where(eq(trips.userId, userId))
+            .orderBy(desc(trips.updatedAt))
+            .limit(1);
+
+          if (recentTrip && (recentTrip.status === "planning" || recentTrip.status === "booked")) {
+            tripId = recentTrip.id;
+            send({ type: "status", content: `Adding to "${recentTrip.title}"...` });
+          }
+        }
+
+        // Only create a new trip if user truly has none
         if (!tripId) {
           const trip = await createTripFromChat({
             title: "My Trip",
