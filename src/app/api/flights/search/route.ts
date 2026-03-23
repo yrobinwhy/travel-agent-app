@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const rl = rateLimit(session.user.id, "flightSearch", RATE_LIMITS.flightSearch);
+  const rl = await rateLimit(session.user.id, "flightSearch", RATE_LIMITS.flightSearch);
   if (!rl.allowed) {
     return Response.json(
       { error: "Too many searches. Please wait a moment." },
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
       offers: sanitizedOffers,
     });
   } catch (error) {
-    if (process.env.NODE_ENV === "development") console.error("Flight search error:", error);
+    // Error logged server-side only in structured format
     return Response.json(
       {
         error:

@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { cn } from "@/lib/utils";
 import { Bot, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -11,7 +12,7 @@ interface ChatMessageProps {
   isStreaming?: boolean;
 }
 
-export function ChatMessage({
+export const ChatMessage = memo(function ChatMessage({
   role,
   content,
   modelName,
@@ -32,7 +33,7 @@ export function ChatMessage({
 
       <div
         className={cn(
-          "max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
+          "max-w-[85%] md:max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
           role === "user"
             ? "bg-emerald-600 text-white rounded-br-sm"
             : "bg-muted/50 border border-border/50 rounded-bl-sm"
@@ -52,7 +53,7 @@ export function ChatMessage({
                 "[&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm"
               )}
             >
-              <ReactMarkdown>{content || ""}</ReactMarkdown>
+              <ReactMarkdown skipHtml>{content || ""}</ReactMarkdown>
             </div>
             {isStreaming && (
               <span className="inline-block w-2 h-4 bg-emerald-500 animate-pulse rounded-sm" />
@@ -75,4 +76,4 @@ export function ChatMessage({
       )}
     </div>
   );
-}
+});

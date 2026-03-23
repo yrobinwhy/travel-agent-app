@@ -2,7 +2,7 @@ import { getUserProfile, getUserPreferences, upsertUserProfile, upsertUserPrefer
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { User, Plane, Shield } from "lucide-react";
@@ -78,7 +78,7 @@ export default async function SettingsPage() {
                 <Input id="employerName" name="employerName" defaultValue={profile?.employerName || ""} />
               </div>
               <div className="col-span-full flex justify-end">
-                <Button type="submit">Save Profile</Button>
+                <SubmitButton>Save Profile</SubmitButton>
               </div>
             </form>
           </CardContent>
@@ -124,7 +124,7 @@ export default async function SettingsPage() {
                 <Input id="knownTravelerId" name="knownTravelerId" defaultValue={profile?.knownTravelerId || ""} />
               </div>
               <div className="col-span-full flex justify-end">
-                <Button type="submit">Save Documents</Button>
+                <SubmitButton>Save Documents</SubmitButton>
               </div>
             </form>
           </CardContent>
@@ -183,7 +183,7 @@ export default async function SettingsPage() {
                 <Input id="accessibilityNeeds" name="accessibilityNeeds" defaultValue={prefs?.accessibilityNeeds || ""} />
               </div>
               <div className="col-span-full flex justify-end">
-                <Button type="submit">Save Preferences</Button>
+                <SubmitButton>Save Preferences</SubmitButton>
               </div>
             </form>
           </CardContent>

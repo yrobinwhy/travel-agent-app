@@ -13,12 +13,15 @@ import {
 } from "@/lib/ai/tools/flight-search";
 import { searchFlights } from "@/lib/flights";
 import type { FlightSearchResult } from "@/lib/flights";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, desc } from "drizzle-orm";
 import type { ChatMessage } from "@/lib/ai/providers";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 // Vercel serverless function config — extend timeout for flight searches
 export const maxDuration = 60; // seconds
+
+// Max messages to load for context (prevents memory spike on long conversations)
+const MAX_HISTORY_MESSAGES = 50;
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -37,8 +40,8 @@ export async function POST(request: Request) {
     modelId?: string;
   };
 
-  // Rate limit
-  const rl = rateLimit(session.user.id, "chat", RATE_LIMITS.chat);
+  // Rate limit (async for Redis support)
+  const rl = await rateLimit(session.user.id, "chat", RATE_LIMITS.chat);
   if (!rl.allowed) {
     return Response.json(
       { error: "Too many messages. Please wait a moment." },
@@ -90,14 +93,16 @@ export async function POST(request: Request) {
     content: message,
   });
 
-  // Load conversation history
+  // Load conversation history (paginated — last N messages for context window)
   const history = await db
     .select()
     .from(messages)
     .where(eq(messages.conversationId, convId))
-    .orderBy(asc(messages.createdAt));
+    .orderBy(desc(messages.createdAt))
+    .limit(MAX_HISTORY_MESSAGES);
 
-  const chatMessages: ChatMessage[] = history.map((m) => ({
+  // Reverse to chronological order
+  const chatMessages: ChatMessage[] = history.reverse().map((m) => ({
     role: m.role as "user" | "assistant" | "system",
     content: m.content,
   }));
@@ -149,8 +154,6 @@ export async function POST(request: Request) {
             send({ type: "text", content: chunk.content });
           } else if (chunk.type === "error") {
             send({ type: "error", content: chunk.content });
-          } else if (chunk.type === "done") {
-            // Will handle below
           }
         }
 
@@ -169,11 +172,9 @@ export async function POST(request: Request) {
             // Execute all searches in parallel
             const searchPromises = flightCalls.map(async (tc) => {
               const params = parseToolCall(tc.toolInput);
-              if (process.env.NODE_ENV === "development") console.log("[FLIGHT SEARCH] Params:", JSON.stringify(params));
               try {
                 return await searchFlights(params);
               } catch (err) {
-                console.error("[FLIGHT SEARCH] Error:", err);
                 return {
                   params,
                   offers: [],
@@ -215,13 +216,6 @@ export async function POST(request: Request) {
             mergedResult.cheapestPrice = prices.length
               ? Math.min(...prices)
               : undefined;
-
-            if (process.env.NODE_ENV === "development") console.log(
-              "[FLIGHT SEARCH] Merged:",
-              mergedResult.offers.length,
-              "offers from",
-              mergedResult.providers.join(", ")
-            );
 
             // Send flight results
             send({
@@ -272,7 +266,6 @@ export async function POST(request: Request) {
               messages: summaryMessages,
               systemPrompt: TRAVEL_CONCIERGE_SYSTEM_PROMPT,
               stream: true,
-              // No tools for summary
             });
 
             for await (const chunk of summaryGen) {
@@ -338,6 +331,12 @@ export async function GET(request: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
+  // Rate limit reads
+  const rl = await rateLimit(session.user.id, "chatRead", RATE_LIMITS.chatRead);
+  if (!rl.allowed) {
+    return Response.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   const { searchParams } = new URL(request.url);
   const convId = searchParams.get("conversationId");
 
@@ -364,9 +363,10 @@ export async function GET(request: Request) {
     .select()
     .from(conversations)
     .where(eq(conversations.userId, session.user.id))
-    .orderBy(asc(conversations.createdAt));
+    .orderBy(desc(conversations.createdAt))
+    .limit(100); // Paginate conversations
 
-  return Response.json({ conversations: convs.reverse() });
+  return Response.json({ conversations: convs });
 }
 
 // DELETE: Delete a conversation or all conversations
@@ -374,6 +374,12 @@ export async function DELETE(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
+  }
+
+  // Rate limit deletes
+  const rl = await rateLimit(session.user.id, "chatDelete", RATE_LIMITS.chatDelete);
+  if (!rl.allowed) {
+    return Response.json({ error: "Too many requests" }, { status: 429 });
   }
 
   const { searchParams } = new URL(request.url);

@@ -1,11 +1,12 @@
 import { getUserOrgs, getOrgMembers, getOrgInvites, createOrg, createInvite, deleteInvite } from "@/lib/db/queries/organizations";
 import { users } from "@/lib/db/schema";
 import { db } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { Badge } from "@/components/ui/badge";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
@@ -19,7 +20,7 @@ export default async function AdminPage() {
   const protocol = host.includes("localhost") ? "http" : "https";
   const baseUrl = `${protocol}://${host}`;
 
-  // Fetch members and invites for each org
+  // Fetch members and invites for each org (batched to avoid N+1)
   const orgsWithDetails = await Promise.all(
     orgs.map(async (org) => {
       const [members, invites] = await Promise.all([
@@ -27,16 +28,20 @@ export default async function AdminPage() {
         getOrgInvites(org.orgId),
       ]);
 
-      // Get user details for members
-      const membersWithInfo = await Promise.all(
-        members.map(async (m) => {
-          const [user] = await db
-            .select({ name: users.name, email: users.email, image: users.image })
+      // Batch user lookup — single query instead of N queries
+      const userIds = members.map((m) => m.userId).filter(Boolean);
+      const userDetails = userIds.length > 0
+        ? await db
+            .select({ id: users.id, name: users.name, email: users.email, image: users.image })
             .from(users)
-            .where(eq(users.id, m.userId));
-          return { ...m, name: user?.name, email: user?.email };
-        })
-      );
+            .where(inArray(users.id, userIds))
+        : [];
+      const userMap = new Map(userDetails.map((u) => [u.id, u]));
+
+      const membersWithInfo = members.map((m) => {
+        const user = userMap.get(m.userId);
+        return { ...m, name: user?.name, email: user?.email };
+      });
 
       return { ...org, members: membersWithInfo, invites };
     })
@@ -79,7 +84,7 @@ export default async function AdminPage() {
                   </select>
                 </div>
                 <div className="col-span-full flex justify-end">
-                  <Button type="submit">Create Organization</Button>
+                  <SubmitButton>Create Organization</SubmitButton>
                 </div>
               </form>
             </CardContent>
@@ -228,9 +233,9 @@ export default async function AdminPage() {
                               <option value="viewer">Viewer</option>
                             </select>
                           </div>
-                          <Button type="submit" size="sm">
+                          <SubmitButton size="sm">
                             <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Create Invite
-                          </Button>
+                          </SubmitButton>
                         </form>
                       </details>
                     </div>
@@ -260,7 +265,7 @@ export default async function AdminPage() {
                       </select>
                     </div>
                     <div className="md:col-span-2 flex justify-end">
-                      <Button type="submit" size="sm">Create</Button>
+                      <SubmitButton size="sm">Create</SubmitButton>
                     </div>
                   </form>
                 </details>
