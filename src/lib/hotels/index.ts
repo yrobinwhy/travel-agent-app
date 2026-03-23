@@ -118,67 +118,77 @@ async function enrichWithTripAdvisor(offers: HotelOffer[], location: string): Pr
       }
     }
 
-    // Also get individual hotel ratings from rich snippets
-    // Do a batch search for our specific hotels
-    const hotelNames = offers.slice(0, 5).map(o => o.name);
+    // Search for each hotel individually on TripAdvisor to get Traveler Ranked position
+    // "ranked #X of Y hotels in [city]" appears in Google snippets for TA hotel pages
+    const hotelNames = offers.slice(0, 8).map(o => o.name);
+    const hotelQuery = hotelNames.map(n => `"${n.split(" ").slice(0, 3).join(" ")}"`).join(" OR ");
     const hotelSearchParams = new URLSearchParams({
       engine: "google",
-      q: `${hotelNames.map(n => `"${n}"`).join(" OR ")} ${location} site:tripadvisor.com`,
+      q: `(${hotelQuery}) ${location} hotel site:tripadvisor.com`,
       api_key: apiKey,
-      num: "10",
+      num: "15",
     });
 
     const hotelResponse = await fetch(`https://serpapi.com/search.json?${hotelSearchParams.toString()}`);
-    const hotelRichData = new Map<string, { rating: number; reviews: number }>();
+    // Map: hotel id → { rating, reviews, rank text }
+    const taData = new Map<string, { rating?: number; reviews?: number; rankText?: string }>();
 
     if (hotelResponse.ok) {
       const hotelData = await hotelResponse.json();
       for (const r of (hotelData.organic_results || [])) {
+        const snippet = (r.snippet || "") + " " + (r.title || "");
         const rich = r.rich_snippet?.top?.detected_extensions;
-        if (rich?.rating) {
-          // Match title to hotel name
-          const title = (r.title || "").toLowerCase();
-          for (const offer of offers) {
-            if (title.includes(offer.name.toLowerCase().split(" ").slice(0, 2).join(" "))) {
-              hotelRichData.set(offer.id, {
-                rating: rich.rating,
-                reviews: rich.reviews || 0,
-              });
-            }
+
+        // Extract "ranked #X of Y hotels in City" from snippet
+        const rankMatch = snippet.match(/ranked\s+#(\d+)\s+of\s+([\d,]+)\s+hotels/i);
+
+        // Match to our offers by name
+        const title = (r.title || "").toLowerCase();
+        for (const offer of offers) {
+          // Check if TripAdvisor result title contains the hotel name (first 2-3 words)
+          const nameWords = offer.name.toLowerCase().split(/\s+/).filter(w => w.length > 2).slice(0, 3);
+          const matchCount = nameWords.filter(w => title.includes(w)).length;
+
+          if (matchCount >= 2 || (matchCount >= 1 && nameWords.length <= 2)) {
+            taData.set(offer.id, {
+              rating: rich?.rating,
+              reviews: rich?.reviews,
+              rankText: rankMatch
+                ? `#${rankMatch[1]} of ${rankMatch[2]} hotels in ${location}`
+                : undefined,
+            });
+            break; // One match per result
           }
         }
       }
     }
 
-    // Enrich offers
+    // Enrich offers with TripAdvisor data
     return offers.map((offer) => {
-      // Try to match hotel name to TripAdvisor ranking
-      const nameLower = offer.name.toLowerCase();
-      let rank: number | undefined;
+      const ta = taData.get(offer.id);
 
+      // Also check city ranking list for name matches
+      const nameLower = offer.name.toLowerCase();
+      let cityRank: number | undefined;
       for (const [taName, taRank] of rankingMap) {
-        // Fuzzy match: check if hotel names overlap significantly
         const offerWords = nameLower.split(/\s+/).filter(w => w.length > 3);
         const taWords = taName.split(/\s+/).filter(w => w.length > 3);
         const overlap = offerWords.filter(w => taWords.some(tw => tw.includes(w) || w.includes(tw)));
         if (overlap.length >= 2 || (overlap.length >= 1 && offerWords.length <= 2)) {
-          rank = taRank;
+          cityRank = taRank;
           break;
         }
       }
 
-      const richData = hotelRichData.get(offer.id);
-      const totalHotels = totalMatch ? totalMatch[1].replace(",", "") : undefined;
+      // Prefer the exact "ranked #X of Y" from individual hotel page
+      const rankText = ta?.rankText ||
+        (cityRank ? `#${cityRank} in ${location} (Featured)` : undefined);
 
       return {
         ...offer,
-        tripAdvisorRating: richData?.rating || offer.tripAdvisorRating,
-        tripAdvisorReviews: richData?.reviews || offer.tripAdvisorReviews,
-        tripAdvisorRank: rank && totalHotels
-          ? `#${rank} of ${totalHotels} hotels in ${location}`
-          : rank
-            ? `#${rank} in ${location}`
-            : offer.tripAdvisorRank,
+        tripAdvisorRating: ta?.rating || offer.tripAdvisorRating,
+        tripAdvisorReviews: ta?.reviews || offer.tripAdvisorReviews,
+        tripAdvisorRank: rankText || offer.tripAdvisorRank,
       };
     });
   } catch {
