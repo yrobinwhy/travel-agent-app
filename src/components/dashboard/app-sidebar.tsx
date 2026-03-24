@@ -104,8 +104,8 @@ function NavGroup({
               >
                 <item.icon className="size-4" />
                 <span>{item.title}</span>
-                {item.badge && (
-                  <span className="ml-auto flex h-2 w-2 rounded-full bg-emerald-500" />
+                {item.badge && pathname !== item.href && (
+                  <span className="ml-auto flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                 )}
               </SidebarMenuButton>
             </SidebarMenuItem>

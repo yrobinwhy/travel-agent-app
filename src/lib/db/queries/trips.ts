@@ -6,6 +6,7 @@ import {
   trips,
   bookings,
   itinerarySegments,
+  tripShares,
 } from "@/lib/db/schema/trips";
 import { orgMemberships } from "@/lib/db/schema";
 import { users } from "@/lib/db/schema/auth";
@@ -33,6 +34,98 @@ async function canAccessTrip(userId: string, trip: { userId: string; orgId: stri
   if (!trip.orgId) return false;
   const orgIds = await getUserOrgIds(userId);
   return orgIds.includes(trip.orgId);
+}
+
+/** Check if user can EDIT a trip (owns it OR has 'collaborate' permission) */
+export async function canEditTrip(tripId: string): Promise<boolean> {
+  const user = await getUser();
+  const [trip] = await db.select().from(trips).where(eq(trips.id, tripId));
+  if (!trip) return false;
+  if (trip.userId === user.id!) return true; // Owner always can edit
+
+  // Check for collaborate permission via trip_shares
+  const shares = await db
+    .select()
+    .from(tripShares)
+    .where(
+      and(
+        eq(tripShares.tripId, tripId),
+        eq(tripShares.permissions, "collaborate")
+      )
+    );
+
+  // For now, org members with collaborate shares can edit
+  // In future, this could be per-user shares
+  return shares.length > 0 && await canAccessTrip(user.id!, trip);
+}
+
+/** Get org members for a trip's org (for sharing management) */
+export async function getTripOrgMembers(tripId: string) {
+  const user = await getUser();
+  const [trip] = await db.select().from(trips).where(eq(trips.id, tripId));
+  if (!trip || trip.userId !== user.id! || !trip.orgId) return [];
+
+  const members = await db
+    .select({
+      userId: orgMemberships.userId,
+      role: orgMemberships.role,
+      name: users.name,
+      email: users.email,
+      image: users.image,
+    })
+    .from(orgMemberships)
+    .innerJoin(users, eq(orgMemberships.userId, users.id))
+    .where(
+      and(
+        eq(orgMemberships.orgId, trip.orgId),
+        ne(orgMemberships.userId, user.id!) // Exclude owner
+      )
+    );
+
+  // Get existing shares for this trip
+  const shares = await db
+    .select()
+    .from(tripShares)
+    .where(eq(tripShares.tripId, tripId));
+
+  return members.map((m) => ({
+    ...m,
+    permission: shares.find((s) => s.shareToken === m.userId)?.permissions || "view",
+  }));
+}
+
+/** Update a member's permission on a shared trip */
+export async function updateTripSharePermission(formData: FormData) {
+  "use server";
+  const user = await getUser();
+  const tripId = formData.get("tripId") as string;
+  const memberId = formData.get("memberId") as string;
+  const permission = formData.get("permission") as "view" | "collaborate";
+
+  // Verify ownership
+  const [trip] = await db.select().from(trips).where(and(eq(trips.id, tripId), eq(trips.userId, user.id!)));
+  if (!trip) throw new Error("Not authorized");
+
+  // Upsert share record (using memberId as shareToken for simplicity)
+  const existing = await db
+    .select()
+    .from(tripShares)
+    .where(and(eq(tripShares.tripId, tripId), eq(tripShares.shareToken, memberId)));
+
+  if (existing.length > 0) {
+    await db
+      .update(tripShares)
+      .set({ permissions: permission })
+      .where(and(eq(tripShares.tripId, tripId), eq(tripShares.shareToken, memberId)));
+  } else {
+    await db.insert(tripShares).values({
+      tripId,
+      shareToken: memberId,
+      permissions: permission,
+    });
+  }
+
+  revalidatePath(`/trips/${tripId}`);
 }
 
 // ============================================

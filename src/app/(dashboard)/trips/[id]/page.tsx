@@ -1,4 +1,4 @@
-import { getTripWithSegments, updateTrip, deleteTrip, deleteSegment } from "@/lib/db/queries/trips";
+import { getTripWithSegments, updateTrip, deleteTrip, deleteSegment, canEditTrip, getTripOrgMembers, updateTripSharePermission } from "@/lib/db/queries/trips";
 import { getUserOrgs } from "@/lib/db/queries/organizations";
 import { auth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,9 +79,10 @@ export default async function TripDetailPage({
 }) {
   const { id } = await params;
   const session = await auth();
-  const [trip, orgs] = await Promise.all([
+  const [trip, orgs, isEditor] = await Promise.all([
     getTripWithSegments(id),
     getUserOrgs(),
+    canEditTrip(id),
   ]);
 
   if (!trip) {
@@ -89,6 +90,7 @@ export default async function TripDetailPage({
   }
 
   const isOwner = trip.userId === session?.user?.id;
+  const orgMembers = isOwner && trip.orgId ? await getTripOrgMembers(id) : [];
 
   // Group segments by date
   const segmentsByDate = new Map<string, typeof trip.segments>();
@@ -131,6 +133,11 @@ export default async function TripDetailPage({
         >
           {trip.status.replace("_", " ")}
         </Badge>
+        {!isEditor && !isOwner && (
+          <Badge variant="outline" className="text-muted-foreground border-muted-foreground/30">
+            View only
+          </Badge>
+        )}
         <div className="ml-auto">
           <TripPresence tripId={trip.id} currentUserId={session?.user?.id || ""} />
         </div>
@@ -251,17 +258,19 @@ export default async function TripDetailPage({
                                   )}
                                 </div>
                               </div>
-                              <form action={deleteSegment}>
-                                <input type="hidden" name="segmentId" value={seg.id} />
-                                <input type="hidden" name="tripId" value={trip.id} />
-                                <button
-                                  type="submit"
-                                  className="text-muted-foreground hover:text-destructive transition-colors p-1"
-                                  title="Remove"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </form>
+                              {isEditor && (
+                                <form action={deleteSegment}>
+                                  <input type="hidden" name="segmentId" value={seg.id} />
+                                  <input type="hidden" name="tripId" value={trip.id} />
+                                  <button
+                                    type="submit"
+                                    className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                                    title="Remove"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </form>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
@@ -319,8 +328,8 @@ export default async function TripDetailPage({
           </Card>
         )}
 
-        {/* Edit Trip — owner only */}
-        {isOwner && (
+        {/* Edit Trip — owner or collaborators */}
+        {isEditor && (
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">Edit Trip</CardTitle>
@@ -407,6 +416,52 @@ export default async function TripDetailPage({
                   <SubmitButton>Save Changes</SubmitButton>
                 </div>
               </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Sharing Management — owner only, shared trips */}
+        {isOwner && orgMembers.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Users className="h-4 w-4" /> Sharing & Permissions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                All org members can view this trip. Grant edit access to let members add flights, hotels, and modify the itinerary.
+              </p>
+              {orgMembers.map((member) => (
+                <form key={member.userId} action={updateTripSharePermission} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
+                  <input type="hidden" name="tripId" value={trip.id} />
+                  <input type="hidden" name="memberId" value={member.userId} />
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {member.image ? (
+                      <img src={member.image} alt="" className="h-7 w-7 rounded-full" />
+                    ) : (
+                      <div className="h-7 w-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium">
+                        {member.name?.[0] || "?"}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{member.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                    </div>
+                  </div>
+                  <select
+                    name="permission"
+                    defaultValue={member.permission}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                  >
+                    <option value="view">Can view</option>
+                    <option value="collaborate">Can edit</option>
+                  </select>
+                  <SubmitButton size="sm" variant="ghost" className="text-xs h-8 px-2">
+                    Save
+                  </SubmitButton>
+                </form>
+              ))}
             </CardContent>
           </Card>
         )}
