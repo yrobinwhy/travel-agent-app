@@ -210,7 +210,7 @@ export default async function AdminPage() {
                       <details className="group">
                         <summary className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-premium">
                           <UserPlus className="h-3.5 w-3.5" />
-                          <span>Invite a new member</span>
+                          <span>Add a member</span>
                         </summary>
                         <form action={createInvite} className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                           <input type="hidden" name="orgId" value={org.orgId} />
@@ -224,6 +224,9 @@ export default async function AdminPage() {
                               placeholder="member@example.com"
                               className="h-9"
                             />
+                            <p className="text-[10px] text-muted-foreground">
+                              If they already have an account, they&apos;ll be added instantly. Otherwise, an invite link will be generated.
+                            </p>
                           </div>
                           <div className="space-y-1.5">
                             <Label htmlFor={`role-${org.orgId}`} className="text-xs">Role</Label>
@@ -234,7 +237,7 @@ export default async function AdminPage() {
                             </select>
                           </div>
                           <SubmitButton size="sm">
-                            <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Create Invite
+                            <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add Member
                           </SubmitButton>
                         </form>
                       </details>

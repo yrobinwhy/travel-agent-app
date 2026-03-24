@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { organizations, orgMemberships, orgInvites } from "@/lib/db/schema";
+import { organizations, orgMemberships, orgInvites, users } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -98,10 +98,57 @@ export async function createInvite(formData: FormData) {
     throw new Error("Only owners and admins can invite members");
   }
 
+  // Check if user already exists in the system
+  const [existingUser] = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.email, email.toLowerCase().trim()));
+
+  if (existingUser) {
+    // Check if already a member of this org
+    const [existingMembership] = await db
+      .select()
+      .from(orgMemberships)
+      .where(
+        and(
+          eq(orgMemberships.orgId, orgId),
+          eq(orgMemberships.userId, existingUser.id)
+        )
+      );
+
+    if (existingMembership) {
+      // Already a member — nothing to do
+      revalidatePath("/admin");
+      return;
+    }
+
+    // Add them directly — no invite link needed
+    await db.insert(orgMemberships).values({
+      orgId,
+      userId: existingUser.id,
+      role: role as "owner" | "admin" | "member" | "viewer",
+    });
+
+    // Also create an auto-accepted invite record for audit trail
+    const token = crypto.randomBytes(32).toString("hex");
+    await db.insert(orgInvites).values({
+      orgId,
+      email,
+      role: role as "owner" | "admin" | "member" | "viewer",
+      token,
+      expiresAt: new Date(),
+      acceptedAt: new Date(),
+    });
+
+    revalidatePath("/admin");
+    return;
+  }
+
+  // User doesn't exist yet — create a traditional invite link
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-  const [invite] = await db
+  await db
     .insert(orgInvites)
     .values({
       orgId,
@@ -109,8 +156,7 @@ export async function createInvite(formData: FormData) {
       role: role as "owner" | "admin" | "member" | "viewer",
       token,
       expiresAt,
-    })
-    .returning();
+    });
 
   revalidatePath("/admin");
 }
