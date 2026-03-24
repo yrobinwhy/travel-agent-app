@@ -20,6 +20,7 @@ import type { FlightSearchResult } from "@/lib/flights";
 import { searchHotels } from "@/lib/hotels";
 import type { HotelSearchResult } from "@/lib/hotels";
 import { createTripFromChat, addSegmentToTrip, addBookingToTrip } from "@/lib/db/queries/trips";
+import { broadcastTripEvent } from "@/lib/pusher/server";
 import { trips } from "@/lib/db/schema/trips";
 import { eq, asc, desc } from "drizzle-orm";
 import type { ChatMessage } from "@/lib/ai/providers";
@@ -237,6 +238,14 @@ export async function POST(request: Request) {
                 });
               }
               send({ type: "status", content: `Flight added to trip.` });
+              // Broadcast to other viewers
+              broadcastTripEvent(input.tripId as string, {
+                type: "segment-added",
+                userId,
+                userName: session.user?.name || session.user?.email || "Unknown",
+                segmentType: "flight",
+                title: `${input.carrier || ""} ${input.flightNumber || ""} ${input.origin}→${input.destination}`.trim(),
+              });
             } catch {
               send({ type: "status", content: "Could not add flight to trip." });
             }
@@ -270,6 +279,13 @@ export async function POST(request: Request) {
                 });
               }
               send({ type: "status", content: `Hotel added to trip.` });
+              broadcastTripEvent(input.tripId as string, {
+                type: "segment-added",
+                userId,
+                userName: session.user?.name || session.user?.email || "Unknown",
+                segmentType: "hotel",
+                title: input.hotelName as string,
+              });
             } catch {
               send({ type: "status", content: "Could not add hotel to trip." });
             }

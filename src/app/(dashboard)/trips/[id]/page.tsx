@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { TripPresence } from "@/components/trips/trip-presence";
 
 const segmentIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   flight: Plane,
@@ -126,6 +127,9 @@ export default async function TripDetailPage({
         >
           {trip.status.replace("_", " ")}
         </Badge>
+        <div className="ml-auto">
+          <TripPresence tripId={trip.id} currentUserId={session?.user?.id || ""} />
+        </div>
       </header>
 
       <div className="p-6 max-w-4xl mx-auto space-y-6 animate-fade-in">
