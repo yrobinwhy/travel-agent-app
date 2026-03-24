@@ -1,4 +1,5 @@
 import { getTripWithSegments, updateTrip, deleteTrip, deleteSegment } from "@/lib/db/queries/trips";
+import { auth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -75,11 +76,14 @@ export default async function TripDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const session = await auth();
   const trip = await getTripWithSegments(id);
 
   if (!trip) {
     redirect("/trips");
   }
+
+  const isOwner = trip.userId === session?.user?.id;
 
   // Group segments by date
   const segmentsByDate = new Map<string, typeof trip.segments>();
@@ -295,93 +299,109 @@ export default async function TripDetailPage({
           </Card>
         )}
 
-        {/* Edit Trip */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Edit Trip</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form action={updateTrip} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input type="hidden" name="tripId" value={trip.id} />
-              <div className="space-y-2">
-                <Label htmlFor="edit-title">Trip Name</Label>
-                <Input
-                  id="edit-title"
-                  name="title"
-                  defaultValue={trip.title}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-status">Status</Label>
-                <select
-                  id="edit-status"
-                  name="status"
-                  defaultValue={trip.status}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="planning">Planning</option>
-                  <option value="booked">Booked</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-city">Destination City</Label>
-                <Input
-                  id="edit-city"
-                  name="destinationCity"
-                  defaultValue={trip.destinationCity || ""}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-country">Country</Label>
-                <Input
-                  id="edit-country"
-                  name="destinationCountry"
-                  defaultValue={trip.destinationCountry || ""}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-start">Start Date</Label>
-                <Input
-                  id="edit-start"
-                  name="startDate"
-                  type="date"
-                  defaultValue={trip.startDate || ""}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-end">End Date</Label>
-                <Input
-                  id="edit-end"
-                  name="endDate"
-                  type="date"
-                  defaultValue={trip.endDate || ""}
-                />
-              </div>
-              <div className="md:col-span-2 flex justify-end">
-                <SubmitButton>Save Changes</SubmitButton>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+        {/* Shared trip notice */}
+        {!isOwner && (
+          <Card className="bg-blue-500/5 border-blue-500/20">
+            <CardContent className="flex items-center gap-3 py-3">
+              <Users className="h-4 w-4 text-blue-500" />
+              <p className="text-sm text-blue-600 dark:text-blue-400">
+                This trip was shared with you via your organization. Only the owner can edit or delete it.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Delete Trip — separate form outside edit */}
-        <Card className="border-destructive/20">
-          <CardContent className="flex items-center justify-between py-4">
-            <div>
-              <p className="text-sm font-medium text-destructive">Delete Trip</p>
-              <p className="text-xs text-muted-foreground">This will permanently remove the trip and all itinerary items.</p>
-            </div>
-            <form action={deleteTrip}>
-              <input type="hidden" name="tripId" value={trip.id} />
-              <Button type="submit" variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10">
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        {/* Edit Trip — owner only */}
+        {isOwner && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Edit Trip</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form action={updateTrip} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input type="hidden" name="tripId" value={trip.id} />
+                <div className="space-y-2">
+                  <Label htmlFor="edit-title">Trip Name</Label>
+                  <Input
+                    id="edit-title"
+                    name="title"
+                    defaultValue={trip.title}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-status">Status</Label>
+                  <select
+                    id="edit-status"
+                    name="status"
+                    defaultValue={trip.status}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="planning">Planning</option>
+                    <option value="booked">Booked</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-city">Destination City</Label>
+                  <Input
+                    id="edit-city"
+                    name="destinationCity"
+                    defaultValue={trip.destinationCity || ""}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-country">Country</Label>
+                  <Input
+                    id="edit-country"
+                    name="destinationCountry"
+                    defaultValue={trip.destinationCountry || ""}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-start">Start Date</Label>
+                  <Input
+                    id="edit-start"
+                    name="startDate"
+                    type="date"
+                    defaultValue={trip.startDate || ""}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-end">End Date</Label>
+                  <Input
+                    id="edit-end"
+                    name="endDate"
+                    type="date"
+                    defaultValue={trip.endDate || ""}
+                  />
+                </div>
+                <div className="md:col-span-2 flex justify-end">
+                  <SubmitButton>Save Changes</SubmitButton>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Delete Trip — owner only */}
+        {isOwner && (
+          <Card className="border-destructive/20">
+            <CardContent className="flex items-center justify-between py-4">
+              <div>
+                <p className="text-sm font-medium text-destructive">Delete Trip</p>
+                <p className="text-xs text-muted-foreground">This will permanently remove the trip and all itinerary items.</p>
+              </div>
+              <form action={deleteTrip}>
+                <input type="hidden" name="tripId" value={trip.id} />
+                <Button type="submit" variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10">
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </>
   );

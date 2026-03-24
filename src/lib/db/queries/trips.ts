@@ -7,13 +7,32 @@ import {
   bookings,
   itinerarySegments,
 } from "@/lib/db/schema/trips";
-import { eq, desc, and, or } from "drizzle-orm";
+import { orgMemberships } from "@/lib/db/schema";
+import { users } from "@/lib/db/schema/auth";
+import { eq, desc, and, or, inArray, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 async function getUser() {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
   return session.user;
+}
+
+/** Get all orgIds the user belongs to */
+async function getUserOrgIds(userId: string): Promise<string[]> {
+  const memberships = await db
+    .select({ orgId: orgMemberships.orgId })
+    .from(orgMemberships)
+    .where(eq(orgMemberships.userId, userId));
+  return memberships.map((m) => m.orgId);
+}
+
+/** Check if user can access a trip (owns it OR shares an org) */
+async function canAccessTrip(userId: string, trip: { userId: string; orgId: string | null }): Promise<boolean> {
+  if (trip.userId === userId) return true;
+  if (!trip.orgId) return false;
+  const orgIds = await getUserOrgIds(userId);
+  return orgIds.includes(trip.orgId);
 }
 
 // ============================================
@@ -29,13 +48,60 @@ export async function getUserTrips() {
     .orderBy(desc(trips.updatedAt));
 }
 
+/** Get trips shared with user via org (not owned by user) */
+export async function getSharedTrips() {
+  const user = await getUser();
+  const orgIds = await getUserOrgIds(user.id!);
+
+  if (orgIds.length === 0) return [];
+
+  // Get trips belonging to orgs user is in, but not owned by user
+  const sharedTrips = await db
+    .select({
+      id: trips.id,
+      userId: trips.userId,
+      orgId: trips.orgId,
+      title: trips.title,
+      destinationCity: trips.destinationCity,
+      destinationCountry: trips.destinationCountry,
+      startDate: trips.startDate,
+      endDate: trips.endDate,
+      status: trips.status,
+      notes: trips.notes,
+      travelers: trips.travelers,
+      conversationId: trips.conversationId,
+      createdAt: trips.createdAt,
+      updatedAt: trips.updatedAt,
+      ownerName: users.name,
+      ownerEmail: users.email,
+    })
+    .from(trips)
+    .innerJoin(users, eq(trips.userId, users.id))
+    .where(
+      and(
+        inArray(trips.orgId, orgIds),
+        ne(trips.userId, user.id!)
+      )
+    )
+    .orderBy(desc(trips.updatedAt));
+
+  return sharedTrips;
+}
+
 export async function getTripById(tripId: string) {
   const user = await getUser();
   const [trip] = await db
     .select()
     .from(trips)
-    .where(and(eq(trips.id, tripId), eq(trips.userId, user.id!)));
-  return trip || null;
+    .where(eq(trips.id, tripId));
+
+  if (!trip) return null;
+
+  // Check access: own it or share org
+  const hasAccess = await canAccessTrip(user.id!, trip);
+  if (!hasAccess) return null;
+
+  return trip;
 }
 
 export async function getTripWithSegments(tripId: string) {
@@ -43,9 +109,13 @@ export async function getTripWithSegments(tripId: string) {
   const [trip] = await db
     .select()
     .from(trips)
-    .where(and(eq(trips.id, tripId), eq(trips.userId, user.id!)));
+    .where(eq(trips.id, tripId));
 
   if (!trip) return null;
+
+  // Check access: own it or share org
+  const hasAccess = await canAccessTrip(user.id!, trip);
+  if (!hasAccess) return null;
 
   const segments = await db
     .select()
@@ -99,10 +169,15 @@ export async function createTripFromChat(data: {
   conversationId?: string;
   userId: string;
 }) {
+  // Auto-assign the user's first org so trips are shared with team
+  const orgIds = await getUserOrgIds(data.userId);
+  const orgId = orgIds.length > 0 ? orgIds[0] : null;
+
   const [trip] = await db
     .insert(trips)
     .values({
       userId: data.userId,
+      orgId: orgId,
       title: data.title,
       destinationCity: data.destinationCity || null,
       destinationCountry: data.destinationCountry || null,
