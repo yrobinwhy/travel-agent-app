@@ -96,7 +96,6 @@ export async function getTripOrgMembers(tripId: string) {
 
 /** Update a member's permission on a shared trip */
 export async function updateTripSharePermission(formData: FormData) {
-  "use server";
   const user = await getUser();
   const tripId = formData.get("tripId") as string;
   const memberId = formData.get("memberId") as string;

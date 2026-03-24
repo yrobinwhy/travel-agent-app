@@ -12,6 +12,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Building2, Users, UserPlus, Crown, Link, Clock, CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { headers } from "next/headers";
+import { SmartInviteForm } from "@/components/admin/smart-invite-form";
 
 export default async function AdminPage() {
   const orgs = await getUserOrgs();
@@ -212,34 +213,7 @@ export default async function AdminPage() {
                           <UserPlus className="h-3.5 w-3.5" />
                           <span>Add a member</span>
                         </summary>
-                        <form action={createInvite} className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-                          <input type="hidden" name="orgId" value={org.orgId} />
-                          <div className="space-y-1.5">
-                            <Label htmlFor={`email-${org.orgId}`} className="text-xs">Email Address</Label>
-                            <Input
-                              id={`email-${org.orgId}`}
-                              name="email"
-                              type="email"
-                              required
-                              placeholder="member@example.com"
-                              className="h-9"
-                            />
-                            <p className="text-[10px] text-muted-foreground">
-                              If they already have an account, they&apos;ll be added instantly. Otherwise, an invite link will be generated.
-                            </p>
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label htmlFor={`role-${org.orgId}`} className="text-xs">Role</Label>
-                            <select id={`role-${org.orgId}`} name="role" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
-                              <option value="member">Member</option>
-                              <option value="admin">Admin</option>
-                              <option value="viewer">Viewer</option>
-                            </select>
-                          </div>
-                          <SubmitButton size="sm">
-                            <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add Member
-                          </SubmitButton>
-                        </form>
+                        <SmartInviteForm orgId={org.orgId} action={createInvite} />
                       </details>
                     </div>
                   )}
