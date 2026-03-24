@@ -1,4 +1,5 @@
 import { getUserTrips, getSharedTrips, createTrip, deleteTrip } from "@/lib/db/queries/trips";
+import { getUserOrgs } from "@/lib/db/queries/organizations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -106,9 +107,10 @@ function TripCard({ trip, shared }: { trip: { id: string; title: string; destina
 }
 
 export default async function TripsPage() {
-  const [myTrips, sharedTrips] = await Promise.all([
+  const [myTrips, sharedTrips, orgs] = await Promise.all([
     getUserTrips(),
     getSharedTrips(),
+    getUserOrgs(),
   ]);
 
   return (
@@ -198,6 +200,25 @@ export default async function TripsPage() {
                   placeholder="e.g., Japan"
                 />
               </div>
+              {orgs.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="orgId">Share with</Label>
+                  <select
+                    id="orgId"
+                    name="orgId"
+                    defaultValue={orgs[0]?.orgId || ""}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Private (only me)</option>
+                    {orgs.map((org) => (
+                      <option key={org.orgId} value={org.orgId}>
+                        {org.orgName} ({org.orgType})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">Members of the selected organization can view this trip</p>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="startDate">Start Date</Label>
                 <Input id="startDate" name="startDate" type="date" />

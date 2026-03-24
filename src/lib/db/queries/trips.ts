@@ -141,6 +141,7 @@ export async function createTrip(formData: FormData) {
   const startDate = formData.get("startDate") as string;
   const endDate = formData.get("endDate") as string;
   const notes = formData.get("notes") as string;
+  const orgId = formData.get("orgId") as string;
 
   if (!title?.trim()) throw new Error("Trip title is required");
 
@@ -148,6 +149,7 @@ export async function createTrip(formData: FormData) {
     .insert(trips)
     .values({
       userId: user.id!,
+      orgId: orgId || null,
       title: title.trim(),
       destinationCity: destinationCity || null,
       destinationCountry: destinationCountry || null,
@@ -209,6 +211,7 @@ export async function updateTrip(formData: FormData) {
   const endDate = formData.get("endDate") as string;
   const status = formData.get("status") as string;
   const notes = formData.get("notes") as string;
+  const orgId = formData.get("orgId") as string | null;
 
   await db
     .update(trips)
@@ -220,6 +223,7 @@ export async function updateTrip(formData: FormData) {
       ...(endDate !== undefined && { endDate }),
       ...(status && { status: status as "planning" | "booked" | "in_progress" | "completed" | "cancelled" }),
       ...(notes !== undefined && { notes }),
+      ...(orgId !== undefined && { orgId: orgId || null }),
       updatedAt: new Date(),
     })
     .where(eq(trips.id, tripId));

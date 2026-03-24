@@ -1,4 +1,5 @@
 import { getTripWithSegments, updateTrip, deleteTrip, deleteSegment } from "@/lib/db/queries/trips";
+import { getUserOrgs } from "@/lib/db/queries/organizations";
 import { auth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -78,7 +79,10 @@ export default async function TripDetailPage({
 }) {
   const { id } = await params;
   const session = await auth();
-  const trip = await getTripWithSegments(id);
+  const [trip, orgs] = await Promise.all([
+    getTripWithSegments(id),
+    getUserOrgs(),
+  ]);
 
   if (!trip) {
     redirect("/trips");
@@ -347,6 +351,24 @@ export default async function TripDetailPage({
                     <option value="cancelled">Cancelled</option>
                   </select>
                 </div>
+                {orgs.length > 0 && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-orgId">Shared with</Label>
+                    <select
+                      id="edit-orgId"
+                      name="orgId"
+                      defaultValue={trip.orgId || ""}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Private (only me)</option>
+                      {orgs.map((org) => (
+                        <option key={org.orgId} value={org.orgId}>
+                          {org.orgName} ({org.orgType})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="edit-city">Destination City</Label>
                   <Input
