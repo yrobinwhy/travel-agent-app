@@ -65,7 +65,7 @@ const manageNav: NavItem[] = [
 ];
 
 const insightNav: NavItem[] = [
-  { title: "Alerts", href: "/alerts", icon: Bell, badge: true },
+  { title: "Alerts", href: "/alerts", icon: Bell },
   { title: "Tips & Deals", href: "/tips", icon: TrendingUp },
   { title: "Expenses", href: "/expenses", icon: Receipt },
   { title: "Travel History", href: "/history", icon: History },

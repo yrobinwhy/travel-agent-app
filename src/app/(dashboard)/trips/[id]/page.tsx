@@ -1,6 +1,7 @@
 import { getTripWithSegments, updateTrip, deleteTrip, deleteSegment, canEditTrip, getTripOrgMembers, updateTripSharePermission } from "@/lib/db/queries/trips";
 import { getUserOrgs } from "@/lib/db/queries/organizations";
 import { getTripActivity, markTripViewed } from "@/lib/db/queries/activity";
+import { PermissionSelect } from "@/components/trips/permission-select";
 import { auth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -438,9 +439,7 @@ export default async function TripDetailPage({
                 All org members can view this trip. Grant edit access to let members add flights, hotels, and modify the itinerary.
               </p>
               {orgMembers.map((member) => (
-                <form key={`${member.userId}-${member.permission}`} action={updateTripSharePermission} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
-                  <input type="hidden" name="tripId" value={trip.id} />
-                  <input type="hidden" name="memberId" value={member.userId} />
+                <div key={member.userId} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     {member.image ? (
                       <img src={member.image} alt="" className="h-7 w-7 rounded-full" />
@@ -454,19 +453,16 @@ export default async function TripDetailPage({
                       <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                     </div>
                   </div>
-                  <select
-                    name="permission"
-                    defaultValue={member.permission}
-                    onChange={(e) => (e.target.closest("form") as HTMLFormElement)?.requestSubmit()}
-                    className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-                  >
-                    <option value="view">Can view</option>
-                    <option value="collaborate">Can edit</option>
-                  </select>
+                  <PermissionSelect
+                    tripId={trip.id}
+                    memberId={member.userId}
+                    currentPermission={member.permission}
+                    action={updateTripSharePermission}
+                  />
                   <Badge variant="outline" className="text-xs">
                     {member.role}
                   </Badge>
-                </form>
+                </div>
               ))}
             </CardContent>
           </Card>

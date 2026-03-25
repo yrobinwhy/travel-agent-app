@@ -64,43 +64,57 @@ export async function markTripViewed(tripId: string) {
   }
 }
 
-/** Check if any trips have activity since user last viewed them */
+/** Check if any trips have activity BY OTHER USERS since the current user last viewed them */
 export async function hasUnviewedTripUpdates(): Promise<boolean> {
   const user = await getUser();
 
-  // Get all trip IDs user has access to
-  const userTrips = await db.select({ id: trips.id, updatedAt: trips.updatedAt }).from(trips).where(eq(trips.userId, user.id!));
-
-  // Get user's org memberships for shared trips
+  // Get all trip IDs user has access to (own + shared via org)
   const { orgMemberships } = await import("@/lib/db/schema");
+  const { inArray, ne } = await import("drizzle-orm");
+
+  const userTrips = await db.select({ id: trips.id }).from(trips).where(eq(trips.userId, user.id!));
   const memberships = await db.select({ orgId: orgMemberships.orgId }).from(orgMemberships).where(eq(orgMemberships.userId, user.id!));
   const orgIds = memberships.map((m) => m.orgId);
 
-  let sharedTrips: { id: string; updatedAt: Date }[] = [];
+  let sharedTrips: { id: string }[] = [];
   if (orgIds.length > 0) {
-    const { inArray, ne } = await import("drizzle-orm");
     sharedTrips = await db
-      .select({ id: trips.id, updatedAt: trips.updatedAt })
+      .select({ id: trips.id })
       .from(trips)
       .where(and(inArray(trips.orgId, orgIds), ne(trips.userId, user.id!)));
   }
 
-  const allTrips = [...userTrips, ...sharedTrips];
-  if (allTrips.length === 0) return false;
+  const allTripIds = [...userTrips, ...sharedTrips].map((t) => t.id);
+  if (allTripIds.length === 0) return false;
 
-  // Get last viewed times
+  // Get last viewed times for these trips
   const viewedRecords = await db
     .select()
     .from(tripLastViewed)
-    .where(eq(tripLastViewed.userId, user.id!));
+    .where(and(eq(tripLastViewed.userId, user.id!)));
   const viewedMap = new Map(viewedRecords.map((v) => [v.tripId, v.viewedAt]));
 
-  // Check if any trip was updated after last view
-  for (const trip of allTrips) {
-    const lastViewed = viewedMap.get(trip.id);
-    if (!lastViewed || trip.updatedAt > lastViewed) {
+  // Check activity log for updates by OTHER users since last viewed
+  for (const tripId of allTripIds) {
+    const lastViewed = viewedMap.get(tripId);
+
+    // Look for activity entries by OTHER users after last viewed
+    const recentActivity = await db
+      .select({ id: tripActivityLog.id })
+      .from(tripActivityLog)
+      .where(
+        and(
+          eq(tripActivityLog.tripId, tripId),
+          ne(tripActivityLog.userId, user.id!),
+          lastViewed ? gt(tripActivityLog.createdAt, lastViewed) : undefined
+        )
+      )
+      .limit(1);
+
+    if (recentActivity.length > 0) {
       return true;
     }
   }
+
   return false;
 }

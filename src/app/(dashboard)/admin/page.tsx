@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Building2, Users, UserPlus, Crown, Link, Clock, CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { headers } from "next/headers";
 import { SmartInviteForm } from "@/components/admin/smart-invite-form";
+import { RoleSelect } from "@/components/admin/role-select";
 
 export default async function AdminPage() {
   const orgs = await getUserOrgs();
@@ -140,20 +141,12 @@ export default async function AdminPage() {
                                 <Crown className="mr-1 h-3 w-3" /> Owner
                               </Badge>
                             ) : canManageRoles ? (
-                              <form action={updateMemberRole} className="flex items-center gap-2">
-                                <input type="hidden" name="orgId" value={org.orgId} />
-                                <input type="hidden" name="memberUserId" value={m.userId} />
-                                <select
-                                  name="role"
-                                  defaultValue={m.role}
-                                  onChange={(e) => (e.target.closest("form") as HTMLFormElement)?.requestSubmit()}
-                                  className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-                                >
-                                  <option value="admin">Admin</option>
-                                  <option value="member">Member</option>
-                                  <option value="viewer">Viewer</option>
-                                </select>
-                              </form>
+                              <RoleSelect
+                                orgId={org.orgId}
+                                memberUserId={m.userId}
+                                currentRole={m.role}
+                                action={updateMemberRole}
+                              />
                             ) : (
                               <Badge variant="outline" className="text-xs">
                                 {m.role}
