@@ -295,3 +295,36 @@ export const tripShares = pgTable("trip_shares", {
   expiresAt: timestamp("expires_at", { mode: "date" }),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
+
+// ============================================
+// Trip Activity Log
+// ============================================
+export const tripActivityLog = pgTable("trip_activity_log", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  tripId: text("trip_id")
+    .notNull()
+    .references(() => trips.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  action: text("action").notNull(), // e.g. "flight_added", "hotel_added", "trip_updated", "permission_changed"
+  description: text("description").notNull(), // Human-readable: "Robin added TAP TP1351 LHR→LIS"
+  metadata: jsonb("metadata"), // Extra data: { segmentId, flightNumber, etc. }
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+});
+
+// Track when a user last viewed a trip (for "new update" dot)
+export const tripLastViewed = pgTable("trip_last_viewed", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  tripId: text("trip_id")
+    .notNull()
+    .references(() => trips.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  viewedAt: timestamp("viewed_at", { mode: "date" }).defaultNow().notNull(),
+});

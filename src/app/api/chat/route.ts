@@ -21,6 +21,7 @@ import { searchHotels } from "@/lib/hotels";
 import type { HotelSearchResult } from "@/lib/hotels";
 import { createTripFromChat, addSegmentToTrip, addBookingToTrip } from "@/lib/db/queries/trips";
 import { broadcastTripEvent } from "@/lib/pusher/server";
+import { logTripActivity } from "@/lib/db/queries/activity";
 import { trips } from "@/lib/db/schema/trips";
 import { eq, asc, desc } from "drizzle-orm";
 import type { ChatMessage } from "@/lib/ai/providers";
@@ -237,8 +238,12 @@ export async function POST(request: Request) {
                   status: "draft",
                 });
               }
+              const flightDesc = `${session.user?.name || "User"} added ${input.carrier || ""} ${input.flightNumber || ""} ${input.origin}→${input.destination}`.trim();
               send({ type: "status", content: `Flight added to trip.` });
-              // Broadcast to other viewers
+              // Log activity + broadcast
+              await logTripActivity(input.tripId as string, userId, "flight_added", flightDesc, {
+                flightNumber: input.flightNumber, carrier: input.carrier, origin: input.origin, destination: input.destination, price: input.price,
+              });
               broadcastTripEvent(input.tripId as string, {
                 type: "segment-added",
                 userId,
@@ -278,7 +283,11 @@ export async function POST(request: Request) {
                   checkOutAt: input.checkOut ? new Date(input.checkOut as string) : undefined,
                 });
               }
+              const hotelDesc = `${session.user?.name || "User"} added hotel ${input.hotelName}`;
               send({ type: "status", content: `Hotel added to trip.` });
+              await logTripActivity(input.tripId as string, userId, "hotel_added", hotelDesc, {
+                hotelName: input.hotelName, price: input.price, checkIn: input.checkIn, checkOut: input.checkOut,
+              });
               broadcastTripEvent(input.tripId as string, {
                 type: "segment-added",
                 userId,

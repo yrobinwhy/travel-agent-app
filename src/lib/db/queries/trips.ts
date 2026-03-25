@@ -88,10 +88,16 @@ export async function getTripOrgMembers(tripId: string) {
     .from(tripShares)
     .where(eq(tripShares.tripId, tripId));
 
-  return members.map((m) => ({
-    ...m,
-    permission: shares.find((s) => s.shareToken === m.userId)?.permissions || "view",
-  }));
+  return members.map((m) => {
+    const existingShare = shares.find((s) => s.shareToken === m.userId);
+    // If an explicit share exists, use it. Otherwise, default based on org role:
+    // owner/admin → collaborate (edit), member/viewer → view
+    const defaultPermission = (m.role === "owner" || m.role === "admin") ? "collaborate" : "view";
+    return {
+      ...m,
+      permission: existingShare?.permissions || defaultPermission,
+    };
+  });
 }
 
 /** Update a member's permission on a shared trip */
@@ -101,9 +107,21 @@ export async function updateTripSharePermission(formData: FormData) {
   const memberId = formData.get("memberId") as string;
   const permission = formData.get("permission") as "view" | "collaborate";
 
-  // Verify ownership
-  const [trip] = await db.select().from(trips).where(and(eq(trips.id, tripId), eq(trips.userId, user.id!)));
-  if (!trip) throw new Error("Not authorized");
+  // Verify ownership or admin role
+  const [trip] = await db.select().from(trips).where(eq(trips.id, tripId));
+  if (!trip) throw new Error("Trip not found");
+  const isOwner = trip.userId === user.id;
+  if (!isOwner && trip.orgId) {
+    const [membership] = await db
+      .select()
+      .from(orgMemberships)
+      .where(and(eq(orgMemberships.orgId, trip.orgId), eq(orgMemberships.userId, user.id!)));
+    if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+      throw new Error("Not authorized — only trip owner or org admin can change permissions");
+    }
+  } else if (!isOwner) {
+    throw new Error("Not authorized");
+  }
 
   // Upsert share record (using memberId as shareToken for simplicity)
   const existing = await db
@@ -123,6 +141,16 @@ export async function updateTripSharePermission(formData: FormData) {
       permissions: permission,
     });
   }
+
+  // Log permission change
+  const { logTripActivity } = await import("./activity");
+  await logTripActivity(
+    tripId,
+    user.id!,
+    "permission_changed",
+    `${user.name || "User"} set permissions to ${permission === "collaborate" ? "Can edit" : "Can view"}`,
+    { memberId, newPermission: permission }
+  );
 
   revalidatePath(`/trips/${tripId}`);
 }

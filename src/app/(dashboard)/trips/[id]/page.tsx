@@ -1,5 +1,6 @@
 import { getTripWithSegments, updateTrip, deleteTrip, deleteSegment, canEditTrip, getTripOrgMembers, updateTripSharePermission } from "@/lib/db/queries/trips";
 import { getUserOrgs } from "@/lib/db/queries/organizations";
+import { getTripActivity, markTripViewed } from "@/lib/db/queries/activity";
 import { auth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -79,15 +80,19 @@ export default async function TripDetailPage({
 }) {
   const { id } = await params;
   const session = await auth();
-  const [trip, orgs, isEditor] = await Promise.all([
+  const [trip, orgs, isEditor, activityLog] = await Promise.all([
     getTripWithSegments(id),
     getUserOrgs(),
     canEditTrip(id),
+    getTripActivity(id, 15),
   ]);
 
   if (!trip) {
     redirect("/trips");
   }
+
+  // Mark trip as viewed (for "new update" notification dot)
+  await markTripViewed(id);
 
   const isOwner = trip.userId === session?.user?.id;
   const orgMembers = isOwner && trip.orgId ? await getTripOrgMembers(id) : [];
@@ -433,7 +438,7 @@ export default async function TripDetailPage({
                 All org members can view this trip. Grant edit access to let members add flights, hotels, and modify the itinerary.
               </p>
               {orgMembers.map((member) => (
-                <form key={member.userId} action={updateTripSharePermission} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
+                <form key={`${member.userId}-${member.permission}`} action={updateTripSharePermission} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
                   <input type="hidden" name="tripId" value={trip.id} />
                   <input type="hidden" name="memberId" value={member.userId} />
                   <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -452,16 +457,54 @@ export default async function TripDetailPage({
                   <select
                     name="permission"
                     defaultValue={member.permission}
+                    onChange={(e) => (e.target.closest("form") as HTMLFormElement)?.requestSubmit()}
                     className="h-8 rounded-md border border-input bg-background px-2 text-xs"
                   >
                     <option value="view">Can view</option>
                     <option value="collaborate">Can edit</option>
                   </select>
-                  <SubmitButton size="sm" variant="ghost" className="text-xs h-8 px-2">
-                    Save
-                  </SubmitButton>
+                  <Badge variant="outline" className="text-xs">
+                    {member.role}
+                  </Badge>
                 </form>
               ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Activity Log */}
+        {activityLog.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Clock className="h-4 w-4" /> Activity Log
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {activityLog.map((entry) => {
+                  const icon = entry.action.includes("flight") ? "✈️" :
+                    entry.action.includes("hotel") ? "🏨" :
+                    entry.action.includes("permission") ? "🔐" :
+                    entry.action.includes("created") ? "📋" : "📝";
+                  return (
+                    <div key={entry.id} className="flex items-start gap-3 text-sm">
+                      <span className="text-base shrink-0 mt-0.5">{icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-foreground/90">{entry.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {new Date(entry.createdAt).toLocaleString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </CardContent>
           </Card>
         )}

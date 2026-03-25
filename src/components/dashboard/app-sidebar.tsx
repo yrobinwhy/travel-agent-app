@@ -77,6 +77,7 @@ interface AppSidebarProps {
     email?: string | null;
     image?: string | null;
   };
+  hasTripsUpdates?: boolean;
 }
 
 function NavGroup({
@@ -131,8 +132,13 @@ function ThemeToggle() {
   );
 }
 
-export function AppSidebar({ user }: AppSidebarProps) {
+export function AppSidebar({ user, hasTripsUpdates }: AppSidebarProps) {
   const pathname = usePathname();
+
+  // Dynamically set Trips badge based on prop
+  const dynamicMainNav = mainNav.map((item) =>
+    item.href === "/trips" ? { ...item, badge: !!hasTripsUpdates } : item
+  );
 
   return (
     <Sidebar>
@@ -155,7 +161,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
       </SidebarHeader>
 
       <SidebarContent>
-        <NavGroup label="Travel" items={mainNav} pathname={pathname} />
+        <NavGroup label="Travel" items={dynamicMainNav} pathname={pathname} />
         <NavGroup label="Manage" items={manageNav} pathname={pathname} />
         <NavGroup label="Insights" items={insightNav} pathname={pathname} />
       </SidebarContent>

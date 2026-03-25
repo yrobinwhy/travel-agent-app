@@ -1,4 +1,4 @@
-import { getUserOrgs, getOrgMembers, getOrgInvites, createOrg, createInvite, deleteInvite } from "@/lib/db/queries/organizations";
+import { getUserOrgs, getOrgMembers, getOrgInvites, createOrg, createInvite, deleteInvite, updateMemberRole } from "@/lib/db/queries/organizations";
 import { users } from "@/lib/db/schema";
 import { db } from "@/lib/db";
 import { eq, inArray } from "drizzle-orm";
@@ -121,23 +121,47 @@ export default async function AdminPage() {
                       <Users className="h-4 w-4" /> Members ({org.members.length})
                     </h3>
                     <div className="space-y-2">
-                      {org.members.map((m) => (
-                        <div key={m.membershipId} className="flex items-center justify-between rounded-lg border p-3">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/10 text-sm font-medium text-emerald-600 dark:text-emerald-400">
-                              {m.name?.charAt(0)?.toUpperCase() || "?"}
+                      {org.members.map((m) => {
+                        const isOrgOwner = m.role === "owner";
+                        const canManageRoles = ["owner", "admin"].includes(org.role);
+                        return (
+                          <div key={m.membershipId} className="flex items-center justify-between rounded-lg border p-3">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/10 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                                {m.name?.charAt(0)?.toUpperCase() || "?"}
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">{m.name || "Unknown"}</p>
+                                <p className="text-xs text-muted-foreground">{m.email}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-sm font-medium">{m.name || "Unknown"}</p>
-                              <p className="text-xs text-muted-foreground">{m.email}</p>
-                            </div>
+                            {isOrgOwner ? (
+                              <Badge variant="default" className="text-xs">
+                                <Crown className="mr-1 h-3 w-3" /> Owner
+                              </Badge>
+                            ) : canManageRoles ? (
+                              <form action={updateMemberRole} className="flex items-center gap-2">
+                                <input type="hidden" name="orgId" value={org.orgId} />
+                                <input type="hidden" name="memberUserId" value={m.userId} />
+                                <select
+                                  name="role"
+                                  defaultValue={m.role}
+                                  onChange={(e) => (e.target.closest("form") as HTMLFormElement)?.requestSubmit()}
+                                  className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                                >
+                                  <option value="admin">Admin</option>
+                                  <option value="member">Member</option>
+                                  <option value="viewer">Viewer</option>
+                                </select>
+                              </form>
+                            ) : (
+                              <Badge variant="outline" className="text-xs">
+                                {m.role}
+                              </Badge>
+                            )}
                           </div>
-                          <Badge variant="outline" className="text-xs">
-                            {m.role === "owner" && <Crown className="mr-1 h-3 w-3" />}
-                            {m.role}
-                          </Badge>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 

@@ -266,3 +266,43 @@ export async function removeMember(orgId: string, memberUserId: string) {
       )
     );
 }
+
+/** Update a member's role in an org (owner/admin only) */
+export async function updateMemberRole(formData: FormData) {
+  const user = await getUser();
+  const orgId = formData.get("orgId") as string;
+  const memberUserId = formData.get("memberUserId") as string;
+  const newRole = formData.get("role") as string;
+
+  if (!["admin", "member", "viewer"].includes(newRole)) {
+    throw new Error("Invalid role");
+  }
+
+  // Verify requester is owner or admin
+  const [requesterMembership] = await db
+    .select()
+    .from(orgMemberships)
+    .where(and(eq(orgMemberships.orgId, orgId), eq(orgMemberships.userId, user.id!)));
+
+  if (!requesterMembership || !["owner", "admin"].includes(requesterMembership.role)) {
+    throw new Error("Only owners and admins can change roles");
+  }
+
+  // Can't change the owner's role
+  const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId));
+  if (org.ownerId === memberUserId) {
+    throw new Error("Cannot change the org owner's role");
+  }
+
+  // Admins can't promote to admin (only owner can)
+  if (requesterMembership.role === "admin" && newRole === "admin") {
+    throw new Error("Only the owner can promote members to admin");
+  }
+
+  await db
+    .update(orgMemberships)
+    .set({ role: newRole as "admin" | "member" | "viewer" })
+    .where(and(eq(orgMemberships.orgId, orgId), eq(orgMemberships.userId, memberUserId)));
+
+  revalidatePath("/admin");
+}
