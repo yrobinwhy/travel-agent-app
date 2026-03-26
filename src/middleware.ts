@@ -57,7 +57,7 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https: blob: https://lh3.googleusercontent.com https://photos.hotelbeds.com https://www.gstatic.com",
       "font-src 'self' https://fonts.gstatic.com",
-      "connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com https://api.duffel.com https://serpapi.com",
+      "connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com https://api.duffel.com https://serpapi.com wss://*.pusher.com https://*.pusher.com https://sockjs-*.pusher.com",
       "frame-ancestors 'none'",
     ].join("; ")
   );

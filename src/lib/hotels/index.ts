@@ -46,7 +46,7 @@ export async function searchHotels(
       const providerName = activeProviders[results.indexOf(result)]?.name || "unknown";
       errors.push({
         provider: providerName,
-        error: result.reason?.message || "Unknown error",
+        error: sanitizeError(result.reason?.message || "Search unavailable"),
       });
     }
   }
@@ -93,7 +93,9 @@ async function enrichWithTripAdvisor(offers: HotelOffer[], location: string): Pr
       num: "10",
     });
 
-    const response = await fetch(`https://serpapi.com/search.json?${searchParams.toString()}`);
+    const response = await fetch(`https://serpapi.com/search.json?${searchParams.toString()}`, {
+      signal: AbortSignal.timeout(8000),
+    });
     if (!response.ok) return offers;
 
     const data = await response.json();
@@ -129,7 +131,9 @@ async function enrichWithTripAdvisor(offers: HotelOffer[], location: string): Pr
       num: "15",
     });
 
-    const hotelResponse = await fetch(`https://serpapi.com/search.json?${hotelSearchParams.toString()}`);
+    const hotelResponse = await fetch(`https://serpapi.com/search.json?${hotelSearchParams.toString()}`, {
+      signal: AbortSignal.timeout(8000),
+    });
     // Map: hotel id → { rating, reviews, rank text }
     const taData = new Map<string, { rating?: number; reviews?: number; rankText?: string }>();
 
@@ -195,6 +199,13 @@ async function enrichWithTripAdvisor(offers: HotelOffer[], location: string): Pr
     // Don't fail the whole search if TripAdvisor enrichment fails
     return offers;
   }
+}
+
+function sanitizeError(error: string): string {
+  const jsonStart = error.indexOf("{");
+  if (jsonStart > 0) return error.substring(0, jsonStart).trim();
+  if (error.length > 100) return error.substring(0, 100) + "...";
+  return error;
 }
 
 function scoreHotels(offers: HotelOffer[], params: HotelSearchParams): HotelOffer[] {

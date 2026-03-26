@@ -63,7 +63,7 @@ export function parseHotelToolCall(
     guests: (args.guests as number) || 1,
     rooms: (args.rooms as number) || 1,
     minRating: (args.minRating as number) || 4,
-    hotelClass: (args.hotelClass as number) || 5,
+    hotelClass: (args.hotelClass as number) || 4,
     maxPrice: args.maxPrice as number | undefined,
     sortBy: (args.sortBy as HotelSearchParams["sortBy"]) || "value",
   };

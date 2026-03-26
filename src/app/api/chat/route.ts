@@ -6,7 +6,7 @@ import {
   getModelById,
   DEFAULT_MODEL_ID,
 } from "@/lib/ai/providers";
-import { TRAVEL_CONCIERGE_SYSTEM_PROMPT } from "@/lib/ai/prompts/system";
+import { getSystemPrompt } from "@/lib/ai/prompts/system";
 import {
   FLIGHT_SEARCH_TOOL,
   parseToolCall,
@@ -40,16 +40,17 @@ export async function POST(request: Request) {
   }
   const userId = session.user.id;
 
-  const body = await request.json();
+  let body: { message: string; conversationId?: string; modelId?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON" }, { status: 400 });
+  }
   const {
     message,
     conversationId,
     modelId = DEFAULT_MODEL_ID,
-  } = body as {
-    message: string;
-    conversationId?: string;
-    modelId?: string;
-  };
+  } = body;
 
   // Rate limit (async for Redis support)
   const rl = await rateLimit(userId, "chat", RATE_LIMITS.chat);
@@ -130,7 +131,7 @@ export async function POST(request: Request) {
       : undefined;
 
   // Enrich system prompt with active trip context (so Claude knows about existing segments)
-  let enrichedSystemPrompt = TRAVEL_CONCIERGE_SYSTEM_PROMPT;
+  let enrichedSystemPrompt = getSystemPrompt();
   try {
     const linkedTrip = await db
       .select({ id: trips.id, title: trips.title })
@@ -494,9 +495,12 @@ export async function POST(request: Request) {
             }
           }
 
-          // Process flight search tool calls
+          // Collect search tool calls up front (used across branches below)
           const flightCalls = toolCalls.filter(
             (tc) => tc.toolName === "search_flights"
+          );
+          const hotelCalls = toolCalls.filter(
+            (tc) => tc.toolName === "search_hotels"
           );
 
           if (flightCalls.length > 0) {
@@ -611,31 +615,29 @@ export async function POST(request: Request) {
               }
             }
 
-            // Save assistant message
-            await db.insert(messages).values({
-              conversationId: convId!,
-              role: "assistant",
-              content: fullContent,
-              modelUsed: model.apiModelId,
-              toolCalls: {
-                flightSearch: {
-                  searchCount: flightCalls.length,
-                  resultCount: mergedResult.offers.length,
-                  providers: mergedResult.providers,
-                  cheapest: mergedResult.cheapestPrice,
+            // Save assistant message (only if no hotel search follows)
+            if (hotelCalls.length === 0) {
+              await db.insert(messages).values({
+                conversationId: convId!,
+                role: "assistant",
+                content: fullContent,
+                modelUsed: model.apiModelId,
+                toolCalls: {
+                  flightSearch: {
+                    searchCount: flightCalls.length,
+                    resultCount: mergedResult.offers.length,
+                    providers: mergedResult.providers,
+                    cheapest: mergedResult.cheapestPrice,
+                  },
                 },
-              },
-            });
+              });
 
-            send({ type: "done", conversationId: convId });
+              send({ type: "done", conversationId: convId });
+            }
           }
 
           // Process hotel search tool calls
-          const hotelCalls = toolCalls.filter(
-            (tc) => tc.toolName === "search_hotels"
-          );
-
-          if (hotelCalls.length > 0 && flightCalls.length === 0) {
+          if (hotelCalls.length > 0) {
             send({
               type: "status",
               content: "Searching hotels...",
@@ -710,7 +712,7 @@ export async function POST(request: Request) {
               send({ type: "error", content: `Hotel search failed: ${err instanceof Error ? err.message : "Unknown error"}` });
               send({ type: "done", conversationId: convId });
             }
-          } else if (flightCalls.length === 0 && hotelCalls.length === 0) {
+          } else if (flightCalls.length === 0) {
             // Trip tools were called but no search — save what we have
             if (fullContent) {
               await db.insert(messages).values({

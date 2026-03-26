@@ -85,18 +85,32 @@ export async function markAllTripsViewed() {
   const allTripIds = [...userTrips, ...sharedTrips].map((t) => t.id);
   if (allTripIds.length === 0) return;
 
-  // Upsert all trips as viewed
-  for (const tripId of allTripIds) {
-    const [existing] = await db
-      .select()
-      .from(tripLastViewed)
-      .where(and(eq(tripLastViewed.tripId, tripId), eq(tripLastViewed.userId, user.id!)));
+  const { inArray: inArr2 } = await import("drizzle-orm");
 
-    if (existing) {
-      await db.update(tripLastViewed).set({ viewedAt: new Date() }).where(eq(tripLastViewed.id, existing.id));
-    } else {
-      await db.insert(tripLastViewed).values({ tripId, userId: user.id! });
-    }
+  // Batch: get all existing viewed records in one query
+  const existingViewed = await db
+    .select()
+    .from(tripLastViewed)
+    .where(and(eq(tripLastViewed.userId, user.id!), inArr2(tripLastViewed.tripId, allTripIds)));
+
+  const existingTripIds = new Set(existingViewed.map((v) => v.tripId));
+  const now = new Date();
+
+  // Batch update existing records
+  if (existingViewed.length > 0) {
+    const existingIds = existingViewed.map((v) => v.id);
+    await db
+      .update(tripLastViewed)
+      .set({ viewedAt: now })
+      .where(inArr2(tripLastViewed.id, existingIds));
+  }
+
+  // Batch insert new records
+  const newTripIds = allTripIds.filter((id) => !existingTripIds.has(id));
+  if (newTripIds.length > 0) {
+    await db.insert(tripLastViewed).values(
+      newTripIds.map((tripId) => ({ tripId, userId: user.id! }))
+    );
   }
 
   revalidatePath("/trips");
@@ -132,24 +146,29 @@ export async function hasUnviewedTripUpdates(): Promise<boolean> {
     .where(and(eq(tripLastViewed.userId, user.id!)));
   const viewedMap = new Map(viewedRecords.map((v) => [v.tripId, v.viewedAt]));
 
-  // Check activity log for updates by OTHER users since last viewed
-  for (const tripId of allTripIds) {
-    const lastViewed = viewedMap.get(tripId);
+  // Batch check: find any activity by OTHER users on accessible trips since last viewed
+  if (allTripIds.length === 0) return false;
+  const { inArray: inArr } = await import("drizzle-orm");
 
-    // Look for activity entries by OTHER users after last viewed
-    const recentActivity = await db
-      .select({ id: tripActivityLog.id })
-      .from(tripActivityLog)
-      .where(
-        and(
-          eq(tripActivityLog.tripId, tripId),
-          ne(tripActivityLog.userId, user.id!),
-          lastViewed ? gt(tripActivityLog.createdAt, lastViewed) : undefined
-        )
+  // Single query: get the most recent activity by others for all trips at once
+  const recentActivities = await db
+    .select({
+      tripId: tripActivityLog.tripId,
+      createdAt: tripActivityLog.createdAt,
+    })
+    .from(tripActivityLog)
+    .where(
+      and(
+        inArr(tripActivityLog.tripId, allTripIds),
+        ne(tripActivityLog.userId, user.id!)
       )
-      .limit(1);
+    )
+    .orderBy(desc(tripActivityLog.createdAt))
+    .limit(100);
 
-    if (recentActivity.length > 0) {
+  for (const activity of recentActivities) {
+    const lastViewed = viewedMap.get(activity.tripId);
+    if (!lastViewed || activity.createdAt > lastViewed) {
       return true;
     }
   }

@@ -2,11 +2,17 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export async function GET(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
+  }
+
+  const rl = await rateLimit(session.user.id, "api", RATE_LIMITS.api);
+  if (!rl.allowed) {
+    return Response.json({ error: "Too many requests" }, { status: 429 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -22,7 +28,8 @@ export async function GET(request: Request) {
     .where(eq(users.email, email));
 
   if (user) {
-    return Response.json({ found: true, name: user.name, email: user.email, image: user.image });
+    // Only return display info, never internal IDs
+    return Response.json({ found: true, name: user.name, image: user.image });
   }
 
   return Response.json({ found: false });
