@@ -236,20 +236,43 @@ export async function POST(request: Request) {
 
               let trip;
               if (existingTrip.length > 0) {
-                // Reuse existing trip — don't create a duplicate
+                // Reuse trip already linked to this conversation
                 trip = existingTrip[0];
               } else {
-                // No trip yet — create one
-                trip = await createTripFromChat({
-                  title: input.title as string,
-                  destinationCity: input.destinationCity as string | undefined,
-                  destinationCountry: input.destinationCountry as string | undefined,
-                  startDate: input.startDate as string | undefined,
-                  endDate: input.endDate as string | undefined,
-                  conversationId: convId,
-                  userId: userId,
-                });
-                await logTripActivity(trip.id, userId, "trip_created", `Trip "${trip.title}" created`);
+                // Check if user has an existing planning trip to the same destination (cross-conversation match)
+                const destCity = (input.destinationCity as string || "").toLowerCase().trim();
+                let matchedTrip = null;
+                if (destCity) {
+                  const planningTrips = await db
+                    .select({ id: trips.id, title: trips.title, destinationCity: trips.destinationCity })
+                    .from(trips)
+                    .where(and(eq(trips.userId, userId), eq(trips.status, "planning")))
+                    .orderBy(desc(trips.createdAt))
+                    .limit(10);
+                  matchedTrip = planningTrips.find((t) =>
+                    t.destinationCity?.toLowerCase().includes(destCity) ||
+                    destCity.includes(t.destinationCity?.toLowerCase() || "___")
+                  );
+                }
+
+                if (matchedTrip) {
+                  // Found existing trip to same destination — reuse it and link this conversation
+                  trip = matchedTrip;
+                  await db.update(trips).set({ conversationId: convId }).where(eq(trips.id, trip.id));
+                  send({ type: "status", content: `Found existing trip "${trip.title}" — adding to it.` });
+                } else {
+                  // No match — create new trip
+                  trip = await createTripFromChat({
+                    title: input.title as string,
+                    destinationCity: input.destinationCity as string | undefined,
+                    destinationCountry: input.destinationCountry as string | undefined,
+                    startDate: input.startDate as string | undefined,
+                    endDate: input.endDate as string | undefined,
+                    conversationId: convId,
+                    userId: userId,
+                  });
+                  await logTripActivity(trip.id, userId, "trip_created", `Trip "${trip.title}" created`);
+                }
               }
               // Always emit trip_created so client knows the tripId
               send({

@@ -55,7 +55,8 @@ export function ChatPanel() {
   const [input, setInput] = useState("");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(true); // Show by default
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
@@ -70,9 +71,15 @@ export function ChatPanel() {
     const res = await fetch("/api/chat");
     if (res.ok) {
       const data = await res.json();
-      setConversations(data.conversations || []);
+      const convs = data.conversations || [];
+      setConversations(convs);
+      // Auto-hide history panel if no conversations exist
+      if (!historyLoaded) {
+        setHistoryLoaded(true);
+        if (convs.length === 0) setShowHistory(false);
+      }
     }
-  }, []);
+  }, [historyLoaded]);
 
   useEffect(() => {
     loadConversations();
@@ -147,9 +154,17 @@ export function ChatPanel() {
     <div className="flex flex-1 h-full overflow-hidden">
       {/* History sidebar */}
       {showHistory && (
-        <div className="w-72 border-r bg-muted/20 flex flex-col">
-          <div className="flex items-center justify-between p-3 border-b">
-            <h3 className="text-sm font-medium">Conversations</h3>
+        <div className="w-80 border-r bg-muted/10 flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b">
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-emerald-500" />
+              <h3 className="text-sm font-semibold">Recent Chats</h3>
+              {conversations.length > 0 && (
+                <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full text-muted-foreground">
+                  {conversations.length}
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-1">
               {conversations.length > 0 && (
                 <button
@@ -168,11 +183,24 @@ export function ChatPanel() {
               </button>
             </div>
           </div>
+          {conversations.length > 0 && (
+            <div className="px-4 py-2 border-b bg-amber-500/5">
+              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                💡 Continue an existing chat to add flights & hotels to the same trip
+              </p>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {conversations.length === 0 ? (
-              <p className="text-xs text-muted-foreground p-3 text-center">
-                No conversations yet
-              </p>
+              <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                <MessageSquare className="w-8 h-8 text-muted-foreground/30 mb-3" />
+                <p className="text-sm text-muted-foreground/60">
+                  No conversations yet
+                </p>
+                <p className="text-xs text-muted-foreground/40 mt-1">
+                  Start a new chat to plan a trip
+                </p>
+              </div>
             ) : (
               conversations.map((conv) => (
                 <div
@@ -180,19 +208,27 @@ export function ChatPanel() {
                   className={cn(
                     "group flex items-center gap-1 rounded-lg text-sm transition-colors",
                     conv.id === conversationId
-                      ? "bg-emerald-500/10 text-emerald-400"
-                      : "hover:bg-muted/50 text-muted-foreground"
+                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-500"
+                      : "hover:bg-muted/50 text-muted-foreground border border-transparent"
                   )}
                 >
                   <button
                     onClick={() => loadConversation(conv.id)}
-                    className="flex-1 text-left px-3 py-2 min-w-0"
+                    className="flex-1 text-left px-3 py-2.5 min-w-0"
                   >
-                    <p className="truncate font-medium text-xs">
-                      {conv.title || "Untitled"}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-                      {new Date(conv.createdAt).toLocaleDateString()}
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="w-3 h-3 flex-shrink-0 text-muted-foreground/50" />
+                      <p className="truncate font-medium text-xs">
+                        {conv.title || "Untitled"}
+                      </p>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground/50 mt-1 ml-5">
+                      {new Date(conv.createdAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </p>
                   </button>
                   <button
@@ -215,17 +251,26 @@ export function ChatPanel() {
         <div className="flex items-center gap-2 px-4 py-2 border-b bg-background/80 backdrop-blur-sm">
           <button
             onClick={() => setShowHistory(!showHistory)}
-            className="p-1.5 rounded-lg hover:bg-muted/50 text-muted-foreground"
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors",
+              showHistory
+                ? "bg-emerald-500/10 text-emerald-500"
+                : "hover:bg-muted/50 text-muted-foreground"
+            )}
             title="Conversation history"
           >
-            <History className="w-4 h-4" />
+            <History className="w-3.5 h-3.5" />
+            {!showHistory && conversations.length > 0 && (
+              <span>Chats ({conversations.length})</span>
+            )}
           </button>
           <button
             onClick={startNewConversation}
-            className="p-1.5 rounded-lg hover:bg-muted/50 text-muted-foreground"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-muted/50 text-muted-foreground transition-colors"
             title="New conversation"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
+            <span>New</span>
           </button>
           <div className="h-4 w-px bg-border mx-1" />
           <ModelSelector
