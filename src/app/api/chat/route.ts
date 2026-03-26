@@ -236,6 +236,7 @@ export async function POST(request: Request) {
                 conversationId: convId,
                 userId: userId,
               });
+              await logTripActivity(trip.id, userId, "trip_created", `Trip "${trip.title}" created`);
               send({
                 type: "trip_created",
                 content: JSON.stringify({ tripId: trip.id, title: trip.title }),
@@ -736,6 +737,7 @@ async function handleConfirmAction(message: string, userId: string, conversation
             conversationId,
           });
           tripId = trip.id;
+          await logTripActivity(trip.id, userId, "trip_created", `Trip "${trip.title}" created`);
           send({ type: "trip_created", content: JSON.stringify({ tripId: trip.id, title: trip.title }) });
         }
 

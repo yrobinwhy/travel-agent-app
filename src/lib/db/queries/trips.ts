@@ -265,7 +265,7 @@ export async function createTrip(formData: FormData) {
 
   if (!title?.trim()) throw new Error("Trip title is required");
 
-  await db
+  const [newTrip] = await db
     .insert(trips)
     .values({
       userId: user.id!,
@@ -277,7 +277,14 @@ export async function createTrip(formData: FormData) {
       endDate: endDate || null,
       notes: notes || null,
       status: "planning",
-    });
+    })
+    .returning({ id: trips.id });
+
+  // Log trip creation in activity log
+  if (newTrip?.id) {
+    const { logTripActivity } = await import("@/lib/db/queries/activity");
+    await logTripActivity(newTrip.id, user.id!, "trip_created", `Trip "${title.trim()}" created`);
+  }
 
   revalidatePath("/trips");
 }
