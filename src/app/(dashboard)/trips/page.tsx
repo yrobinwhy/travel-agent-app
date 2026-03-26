@@ -114,8 +114,8 @@ export default async function TripsPage() {
     getUserOrgs(),
   ]);
 
-  // Mark all trips as viewed to clear notification dot
-  await markAllTripsViewed();
+  // Mark all trips as viewed to clear notification dot (non-critical)
+  try { await markAllTripsViewed(); } catch { /* silently fail */ }
 
   return (
     <>

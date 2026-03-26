@@ -129,6 +129,42 @@ export async function POST(request: Request) {
       ? [FLIGHT_SEARCH_TOOL, HOTEL_SEARCH_TOOL, ...ALL_TRIP_TOOLS, ...ALL_LOYALTY_TOOLS]
       : undefined;
 
+  // Enrich system prompt with active trip context (so Claude knows about existing segments)
+  let enrichedSystemPrompt = TRAVEL_CONCIERGE_SYSTEM_PROMPT;
+  try {
+    const linkedTrip = await db
+      .select({ id: trips.id, title: trips.title })
+      .from(trips)
+      .where(eq(trips.conversationId, convId))
+      .limit(1);
+
+    if (linkedTrip.length > 0) {
+      const { itinerarySegments } = await import("@/lib/db/schema");
+      const segments = await db
+        .select()
+        .from(itinerarySegments)
+        .where(eq(itinerarySegments.tripId, linkedTrip[0].id));
+
+      if (segments.length > 0) {
+        const segmentDescriptions = segments.map((s) => {
+          const details = (s.details as Record<string, unknown>) || {};
+          if (s.type === "flight") {
+            return `- Flight: ${s.title || s.flightNumber} ${s.origin}→${s.destination} (segmentId="${s.id}", tripId="${linkedTrip[0].id}")`;
+          } else if (s.type === "hotel_night") {
+            return `- Hotel: ${s.title} check-in ${s.startAt ? new Date(s.startAt).toISOString().split("T")[0] : "?"} check-out ${s.endAt ? new Date(s.endAt).toISOString().split("T")[0] : "?"} $${details.price || "?"} (segmentId="${s.id}", tripId="${linkedTrip[0].id}")`;
+          }
+          return `- ${s.type}: ${s.title} (segmentId="${s.id}", tripId="${linkedTrip[0].id}")`;
+        }).join("\n");
+
+        enrichedSystemPrompt += `\n\n## Active Trip Context\nTrip: "${linkedTrip[0].title}" (tripId="${linkedTrip[0].id}")\nExisting segments:\n${segmentDescriptions}\n\nIMPORTANT: When the user asks to modify dates, prices, or details of an existing segment above, use the update_trip_segment tool with the segmentId and tripId shown. Do NOT create a new trip or add a new segment — UPDATE the existing one.`;
+      } else {
+        enrichedSystemPrompt += `\n\n## Active Trip Context\nTrip: "${linkedTrip[0].title}" (tripId="${linkedTrip[0].id}")\nNo segments added yet. Use add_flight_to_trip or add_hotel_to_trip with this tripId.`;
+      }
+    }
+  } catch {
+    // Non-critical — continue without trip context
+  }
+
   // Stream response
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -147,7 +183,7 @@ export async function POST(request: Request) {
         const gen = provider.chatStream({
           model,
           messages: chatMessages,
-          systemPrompt: TRAVEL_CONCIERGE_SYSTEM_PROMPT,
+          systemPrompt: enrichedSystemPrompt,
           stream: true,
           tools,
         });
@@ -493,7 +529,7 @@ export async function POST(request: Request) {
             const summaryGen = provider.chatStream({
               model,
               messages: summaryMessages,
-              systemPrompt: TRAVEL_CONCIERGE_SYSTEM_PROMPT,
+              systemPrompt: enrichedSystemPrompt,
               stream: true,
             });
 
@@ -574,7 +610,7 @@ export async function POST(request: Request) {
               const hotelSummaryGen = provider.chatStream({
                 model,
                 messages: hotelSummaryMessages,
-                systemPrompt: TRAVEL_CONCIERGE_SYSTEM_PROMPT,
+                systemPrompt: enrichedSystemPrompt,
                 stream: true,
               });
 

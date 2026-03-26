@@ -81,12 +81,20 @@ export default async function TripDetailPage({
 }) {
   const { id } = await params;
   const session = await auth();
-  const [trip, orgs, isEditor, activityLog] = await Promise.all([
+
+  let activityLog: Awaited<ReturnType<typeof getTripActivity>> = [];
+  const [trip, orgs, isEditor] = await Promise.all([
     getTripWithSegments(id),
     getUserOrgs(),
     canEditTrip(id),
-    getTripActivity(id, 15),
   ]);
+
+  // Activity log is non-critical — don't let it crash the page
+  try {
+    activityLog = await getTripActivity(id, 15);
+  } catch {
+    // silently fail — page still loads
+  }
 
   if (!trip) {
     redirect("/trips");

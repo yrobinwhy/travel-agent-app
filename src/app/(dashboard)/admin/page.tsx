@@ -25,27 +25,32 @@ export default async function AdminPage() {
   // Fetch members and invites for each org (batched to avoid N+1)
   const orgsWithDetails = await Promise.all(
     orgs.map(async (org) => {
-      const [members, invites] = await Promise.all([
-        getOrgMembers(org.orgId),
-        getOrgInvites(org.orgId),
-      ]);
+      try {
+        const [members, invites] = await Promise.all([
+          getOrgMembers(org.orgId),
+          getOrgInvites(org.orgId),
+        ]);
 
-      // Batch user lookup — single query instead of N queries
-      const userIds = members.map((m) => m.userId).filter(Boolean);
-      const userDetails = userIds.length > 0
-        ? await db
-            .select({ id: users.id, name: users.name, email: users.email, image: users.image })
-            .from(users)
-            .where(inArray(users.id, userIds))
-        : [];
-      const userMap = new Map(userDetails.map((u) => [u.id, u]));
+        // Batch user lookup — single query instead of N queries
+        const userIds = members.map((m) => m.userId).filter(Boolean);
+        const userDetails = userIds.length > 0
+          ? await db
+              .select({ id: users.id, name: users.name, email: users.email, image: users.image })
+              .from(users)
+              .where(inArray(users.id, userIds))
+          : [];
+        const userMap = new Map(userDetails.map((u) => [u.id, u]));
 
-      const membersWithInfo = members.map((m) => {
-        const user = userMap.get(m.userId);
-        return { ...m, name: user?.name, email: user?.email };
-      });
+        const membersWithInfo = members.map((m) => {
+          const user = userMap.get(m.userId);
+          return { ...m, name: user?.name, email: user?.email };
+        });
 
-      return { ...org, members: membersWithInfo, invites };
+        return { ...org, members: membersWithInfo, invites };
+      } catch {
+        // Return org with empty members/invites if query fails
+        return { ...org, members: [] as { membershipId: string; userId: string; role: string; name: string | null | undefined; email: string | null | undefined }[], invites: [] as { id: string; email: string; role: string; token: string; expiresAt: Date | null; acceptedAt: Date | null; createdAt: Date }[] };
+      }
     })
   );
 
@@ -159,14 +164,14 @@ export default async function AdminPage() {
                   </div>
 
                   {/* Pending Invites */}
-                  {org.invites.filter((i) => !i.acceptedAt && i.expiresAt > new Date()).length > 0 && (
+                  {org.invites.filter((i) => !i.acceptedAt && i.expiresAt && i.expiresAt > new Date()).length > 0 && (
                     <div>
                       <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
                         <Clock className="h-4 w-4" /> Pending Invites
                       </h3>
                       <div className="space-y-2">
                         {org.invites
-                          .filter((i) => !i.acceptedAt && i.expiresAt > new Date())
+                          .filter((i) => !i.acceptedAt && i.expiresAt && i.expiresAt > new Date())
                           .map((invite) => (
                             <div key={invite.id} className="rounded-lg border border-dashed p-3">
                               <div className="flex items-center justify-between mb-2">
@@ -176,7 +181,7 @@ export default async function AdminPage() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span className="text-xs text-muted-foreground">
-                                    Expires {invite.expiresAt.toLocaleDateString()}
+                                    Expires {invite.expiresAt?.toLocaleDateString() ?? "never"}
                                   </span>
                                   <form action={deleteInvite}>
                                     <input type="hidden" name="inviteId" value={invite.id} />

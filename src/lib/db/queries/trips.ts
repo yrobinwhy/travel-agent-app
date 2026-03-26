@@ -469,13 +469,15 @@ export async function updateTripSegmentFromChat(data: {
   // Build update object
   const updates: Record<string, unknown> = {};
 
-  if (data.departureTime) updates.departureTime = data.departureTime;
-  if (data.arrivalTime) updates.arrivalTime = data.arrivalTime;
-  if (data.checkIn) updates.startDate = data.checkIn;
-  if (data.checkOut) updates.endDate = data.checkOut;
-  if (data.price !== undefined) updates.price = String(data.price);
-  if (data.currency) updates.currency = data.currency;
-  if (data.notes) updates.notes = data.notes;
+  if (data.departureTime) updates.startAt = new Date(data.departureTime);
+  if (data.arrivalTime) updates.endAt = new Date(data.arrivalTime);
+  if (data.checkIn) updates.startAt = new Date(data.checkIn + "T14:00:00");
+  if (data.checkOut) updates.endAt = new Date(data.checkOut + "T11:00:00");
+  if (data.price !== undefined) {
+    const existing = (segment.details as Record<string, unknown>) || {};
+    updates.details = { ...existing, price: data.price, currency: data.currency || existing.currency || "USD" };
+  }
+  if (data.notes) updates.description = data.notes;
 
   if (Object.keys(updates).length === 0) throw new Error("No updates provided");
 
