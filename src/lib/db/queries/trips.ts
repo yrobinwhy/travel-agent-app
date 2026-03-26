@@ -458,14 +458,43 @@ export async function deleteSegment(formData: FormData) {
   const segmentId = formData.get("segmentId") as string;
   const tripId = formData.get("tripId") as string;
 
-  // Verify trip ownership
+  // Verify trip ownership or edit permission
   const [trip] = await db
     .select()
     .from(trips)
     .where(and(eq(trips.id, tripId), eq(trips.userId, user.id!)));
   if (!trip) throw new Error("Trip not found");
 
+  // Get segment details before deleting (for matching booking)
+  const [segment] = await db
+    .select({ type: itinerarySegments.type, title: itinerarySegments.title, flightNumber: itinerarySegments.flightNumber, carrier: itinerarySegments.carrier })
+    .from(itinerarySegments)
+    .where(eq(itinerarySegments.id, segmentId));
+
+  // Delete the segment
   await db.delete(itinerarySegments).where(eq(itinerarySegments.id, segmentId));
+
+  // Cascade: delete matching booking
+  if (segment) {
+    const bookingType = segment.type === "flight" ? "flight" : segment.type === "hotel_night" ? "hotel" : null;
+    const vendorName = segment.carrier || segment.title;
+    if (bookingType && vendorName) {
+      await db.delete(bookings).where(
+        and(
+          eq(bookings.tripId, tripId),
+          eq(bookings.type, bookingType),
+          eq(bookings.vendorName, vendorName)
+        )
+      );
+    }
+  }
+
+  // Log activity
+  try {
+    const { logTripActivity } = await import("@/lib/db/queries/activity");
+    await logTripActivity(tripId, user.id!, "segment_deleted", `Removed ${segment?.title || "item"} from trip`);
+  } catch { /* non-critical */ }
+
   revalidatePath(`/trips/${tripId}`);
 }
 
@@ -535,6 +564,22 @@ export async function addBookingToTrip(data: {
   checkOutAt?: Date;
   details?: Record<string, unknown>;
 }) {
+  // Dedup check — skip if same booking already exists on this trip
+  if (data.vendorName) {
+    const existing = await db
+      .select({ id: bookings.id })
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.tripId, data.tripId),
+          eq(bookings.type, data.type),
+          eq(bookings.vendorName, data.vendorName)
+        )
+      )
+      .limit(1);
+    if (existing.length > 0) return existing[0];
+  }
+
   const [booking] = await db
     .insert(bookings)
     .values({
