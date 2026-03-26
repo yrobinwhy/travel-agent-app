@@ -92,11 +92,20 @@ export async function POST(request: Request) {
       return Response.json({ error: "Conversation not found" }, { status: 404 });
     }
   } else {
+    // Generate a cleaner conversation title (#12)
+    // Strip common filler phrases, keep the meaningful part
+    const rawTitle = message.slice(0, 200).trim();
+    const cleanTitle = rawTitle
+      .replace(/^(hey|hi|hello|please|can you|could you|i want to|i need to|help me|i'd like to)\s+/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const title = (cleanTitle || rawTitle).slice(0, 100);
+
     const [newConv] = await db
       .insert(conversations)
       .values({
         userId: userId,
-        title: message.slice(0, 100),
+        title,
         modelUsed: model.id,
       })
       .returning();
@@ -118,11 +127,16 @@ export async function POST(request: Request) {
     .orderBy(desc(messages.createdAt))
     .limit(MAX_HISTORY_MESSAGES);
 
-  // Reverse to chronological order
-  const chatMessages: ChatMessage[] = history.reverse().map((m) => ({
-    role: m.role as "user" | "assistant" | "system",
-    content: m.content,
-  }));
+  // Reverse to chronological order, filtering out CONFIRM messages from history
+  // so the LLM doesn't try to re-act on previously confirmed selections (#4)
+  const chatMessages: ChatMessage[] = history
+    .reverse()
+    .filter((m) => !(m.role === "user" && m.content.startsWith("CONFIRM:")))
+    .filter((m) => !(m.role === "assistant" && m.content === "Added to your trip."))
+    .map((m) => ({
+      role: m.role as "user" | "assistant" | "system",
+      content: m.content,
+    }));
 
   // Only provide tools for Claude (Anthropic)
   const tools =
@@ -826,6 +840,19 @@ async function handleConfirmAction(message: string, userId: string, conversation
           tripId = trip.id;
           await logTripActivity(trip.id, userId, "trip_created", `Trip "${trip.title}" created`);
           send({ type: "trip_created", content: JSON.stringify({ tripId: trip.id, title: trip.title }) });
+        }
+
+        // Validate the resolved trip still exists (#5 — trip may have been deleted)
+        const [tripCheck] = await db
+          .select({ id: trips.id })
+          .from(trips)
+          .where(eq(trips.id, tripId))
+          .limit(1);
+        if (!tripCheck) {
+          send({ type: "error", content: "The trip has been deleted. Please start a new conversation to create a new trip." });
+          send({ type: "done", conversationId });
+          controller.close();
+          return;
         }
 
         if (message.includes("add_flight_to_trip") || message.match(/\b[A-Z]{2}\d{1,4}\b/) || message.includes("→")) {

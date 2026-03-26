@@ -76,7 +76,13 @@ class ChatStore {
 
   setMessages(msgs: ChatMessage[]) {
     this.messages = msgs;
+    // Reset activeTripId — it will be re-resolved from conversation context (#3 stale trip fix)
+    this.activeTripId = null;
     this.notify();
+  }
+
+  setActiveTripId(id: string | null) {
+    this.activeTripId = id;
   }
 
   clearMessages() {

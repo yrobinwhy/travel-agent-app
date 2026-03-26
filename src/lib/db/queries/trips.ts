@@ -370,7 +370,12 @@ export async function deleteTrip(formData: FormData) {
     .where(and(eq(trips.id, tripId), eq(trips.userId, user.id!)));
   if (!existing) throw new Error("Trip not found");
 
-  // Cascade handled by DB, but explicit for clarity
+  // Cascade handled by DB onDelete:"cascade", but explicit for completeness (#9)
+  // Delete child tables that reference trips
+  const { tripActivityLog, tripLastViewed } = await import("@/lib/db/schema/trips");
+  await db.delete(tripLastViewed).where(eq(tripLastViewed.tripId, tripId));
+  await db.delete(tripActivityLog).where(eq(tripActivityLog.tripId, tripId));
+  await db.delete(tripShares).where(eq(tripShares.tripId, tripId));
   await db.delete(itinerarySegments).where(eq(itinerarySegments.tripId, tripId));
   await db.delete(bookings).where(eq(bookings.tripId, tripId));
   await db.delete(trips).where(eq(trips.id, tripId));
@@ -402,6 +407,10 @@ export async function addSegmentToTrip(data: {
   details?: Record<string, unknown>;
   sortOrder?: number;
 }) {
+  // Normalize strings to prevent near-duplicate entries (#8 — trailing spaces, etc.)
+  const normalizedTitle = data.title?.trim() || undefined;
+  const normalizedFlightNumber = data.flightNumber?.trim() || undefined;
+
   // Dedup check — skip if same segment already exists on this trip
   const existing = await db
     .select({ id: itinerarySegments.id })
@@ -411,10 +420,10 @@ export async function addSegmentToTrip(data: {
         eq(itinerarySegments.tripId, data.tripId),
         eq(itinerarySegments.type, data.type),
         // Match by flight number for flights, by title for hotels/others
-        data.flightNumber
-          ? eq(itinerarySegments.flightNumber, data.flightNumber)
-          : data.title
-            ? eq(itinerarySegments.title, data.title)
+        normalizedFlightNumber
+          ? eq(itinerarySegments.flightNumber, normalizedFlightNumber)
+          : normalizedTitle
+            ? eq(itinerarySegments.title, normalizedTitle)
             : sql`false`
       )
     )
@@ -430,17 +439,17 @@ export async function addSegmentToTrip(data: {
     .values({
       tripId: data.tripId,
       type: data.type,
-      title: data.title,
+      title: normalizedTitle,
       description: data.description,
       startAt: data.startAt,
       endAt: data.endAt,
       timezone: data.timezone,
-      locationName: data.locationName,
+      locationName: data.locationName?.trim(),
       locationAddress: data.locationAddress,
       locationLat: data.locationLat,
       locationLng: data.locationLng,
-      carrier: data.carrier,
-      flightNumber: data.flightNumber,
+      carrier: data.carrier?.trim(),
+      flightNumber: normalizedFlightNumber,
       origin: data.origin,
       destination: data.destination,
       cabinClass: data.cabinClass,
@@ -565,7 +574,9 @@ export async function addBookingToTrip(data: {
   details?: Record<string, unknown>;
 }) {
   // Dedup check — skip if same booking already exists on this trip
-  if (data.vendorName) {
+  // Treat empty string same as null (#7 — empty string bypassed dedup)
+  const vendorName = data.vendorName?.trim() || undefined;
+  if (vendorName) {
     const existing = await db
       .select({ id: bookings.id })
       .from(bookings)
@@ -573,7 +584,7 @@ export async function addBookingToTrip(data: {
         and(
           eq(bookings.tripId, data.tripId),
           eq(bookings.type, data.type),
-          eq(bookings.vendorName, data.vendorName)
+          eq(bookings.vendorName, vendorName)
         )
       )
       .limit(1);
@@ -586,7 +597,7 @@ export async function addBookingToTrip(data: {
       tripId: data.tripId,
       userId: data.userId,
       type: data.type,
-      vendorName: data.vendorName,
+      vendorName: vendorName,
       totalCost: data.totalCost,
       currency: data.currency || "USD",
       status: data.status || "draft",

@@ -296,7 +296,15 @@ export function ChatPanel() {
             <EmptyState onSuggestionClick={(text) => setInput(text)} />
           ) : (
             <div className="max-w-3xl mx-auto py-4">
-              {messages.map((msg: StoreChatMessage) => (
+              {messages
+                .filter((msg: StoreChatMessage) => {
+                  // Hide raw CONFIRM messages from display (#10)
+                  if (msg.role === "user" && msg.content.startsWith("CONFIRM:")) return false;
+                  // Hide the stub "Added to your trip." response
+                  if (msg.role === "assistant" && msg.content === "Added to your trip.") return false;
+                  return true;
+                })
+                .map((msg: StoreChatMessage) => (
                 <div key={msg.id}>
                   {msg.tripCreated && (
                     <div className="mx-4 my-2">

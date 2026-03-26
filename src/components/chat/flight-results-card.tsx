@@ -49,6 +49,7 @@ export interface FlightResultData {
   fastestDuration?: string;
   providers: string[];
   errors?: Array<{ provider: string; error: string }>;
+  searchedAt?: string; // ISO timestamp of when the search was performed
 }
 
 type SortOption = "value" | "price" | "duration" | "departure" | "stops" | "airline";
@@ -94,11 +95,20 @@ function parseDuration(d: string): number {
 
 export function FlightResultsCard({ results, onSelectFlight, onActionChip }: FlightResultsCardProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false); // Prevent double-click (#1) and double-add (#2)
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("value");
 
   if (!results.offers || results.offers.length === 0) return null;
+
+  // Check if results are stale (>30 minutes old) (#13)
+  const isStale = useMemo(() => {
+    if (!results.searchedAt) return false;
+    const searchedTime = new Date(results.searchedAt).getTime();
+    const ageMinutes = (Date.now() - searchedTime) / (1000 * 60);
+    return ageMinutes > 30;
+  }, [results.searchedAt]);
 
   const sortedOffers = useMemo(() => {
     const offers = [...results.offers];
@@ -126,13 +136,26 @@ export function FlightResultsCard({ results, onSelectFlight, onActionChip }: Fli
   const displayOffers = showAll ? sortedOffers : sortedOffers.slice(0, 6);
 
   const handleSelect = (offer: FlightOffer) => {
+    if (isSelecting) return; // Prevent double-click and double-add
+    if (isStale) return; // Don't allow selecting stale results (#13)
     setSelectedId(offer.id);
+    setIsSelecting(true);
     onSelectFlight?.(offer);
   };
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-2">
       <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 overflow-hidden">
+        {/* Stale results warning (#13) */}
+        {isStale && (
+          <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2">
+            <Clock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+            <p className="text-[11px] text-amber-400">
+              These results are over 30 minutes old. Prices and availability may have changed. Search again for current results.
+            </p>
+          </div>
+        )}
+
         {/* Header */}
         <div className="px-4 py-2.5 border-b border-emerald-500/10">
           <div className="flex items-center justify-between mb-2">
