@@ -23,7 +23,7 @@ import { createTripFromChat, addSegmentToTrip, addBookingToTrip } from "@/lib/db
 import { broadcastTripEvent } from "@/lib/pusher/server";
 import { logTripActivity } from "@/lib/db/queries/activity";
 import { trips } from "@/lib/db/schema/trips";
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, and, asc, desc, sql } from "drizzle-orm";
 import type { ChatMessage } from "@/lib/ai/providers";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
@@ -223,36 +223,78 @@ export async function POST(request: Request) {
             (tc) => tc.toolName === "add_hotel_to_trip"
           );
 
-          // Handle create_trip
+          // Handle create_trip — but ONLY if no trip exists for this conversation
           for (const tc of tripCalls) {
             try {
               const input = tc.toolInput;
-              const trip = await createTripFromChat({
-                title: input.title as string,
-                destinationCity: input.destinationCity as string | undefined,
-                destinationCountry: input.destinationCountry as string | undefined,
-                startDate: input.startDate as string | undefined,
-                endDate: input.endDate as string | undefined,
-                conversationId: convId,
-                userId: userId,
-              });
-              await logTripActivity(trip.id, userId, "trip_created", `Trip "${trip.title}" created`);
+              // Check if conversation already has a linked trip
+              const existingTrip = await db
+                .select({ id: trips.id, title: trips.title })
+                .from(trips)
+                .where(eq(trips.conversationId, convId))
+                .limit(1);
+
+              let trip;
+              if (existingTrip.length > 0) {
+                // Reuse existing trip — don't create a duplicate
+                trip = existingTrip[0];
+              } else {
+                // No trip yet — create one
+                trip = await createTripFromChat({
+                  title: input.title as string,
+                  destinationCity: input.destinationCity as string | undefined,
+                  destinationCountry: input.destinationCountry as string | undefined,
+                  startDate: input.startDate as string | undefined,
+                  endDate: input.endDate as string | undefined,
+                  conversationId: convId,
+                  userId: userId,
+                });
+                await logTripActivity(trip.id, userId, "trip_created", `Trip "${trip.title}" created`);
+              }
+              // Always emit trip_created so client knows the tripId
               send({
                 type: "trip_created",
                 content: JSON.stringify({ tripId: trip.id, title: trip.title }),
               });
-              // tripId is sent to client via trip_created event — don't add to fullContent
             } catch {
               send({ type: "status", content: "Could not create trip automatically." });
             }
+          }
+
+          // Helper: resolve tripId — Claude may not pass it, so we look up the conversation's linked trip
+          async function resolveTripId(inputTripId?: unknown): Promise<string | null> {
+            if (inputTripId && typeof inputTripId === "string" && inputTripId.length > 10) {
+              return inputTripId;
+            }
+            // Look up conversation's linked trip
+            const linked = await db
+              .select({ id: trips.id })
+              .from(trips)
+              .where(sql`${trips.conversationId} = ${convId}`)
+              .orderBy(desc(trips.createdAt))
+              .limit(1);
+            if (linked.length > 0) return linked[0].id;
+            // Last resort: find user's most recent planning trip
+            const recent = await db
+              .select({ id: trips.id })
+              .from(trips)
+              .where(and(eq(trips.userId, userId), eq(trips.status, "planning")))
+              .orderBy(desc(trips.createdAt))
+              .limit(1);
+            return recent.length > 0 ? recent[0].id : null;
           }
 
           // Handle add_flight_to_trip
           for (const tc of addFlightCalls) {
             try {
               const input = tc.toolInput;
+              const resolvedTripId = await resolveTripId(input.tripId);
+              if (!resolvedTripId) {
+                send({ type: "status", content: "⚠️ No trip found. Please create a trip first." });
+                continue;
+              }
               await addSegmentToTrip({
-                tripId: input.tripId as string,
+                tripId: resolvedTripId,
                 type: "flight",
                 title: `${input.carrier || ""} ${input.flightNumber || ""} · ${input.origin} → ${input.destination}`.trim(),
                 carrier: input.carrier as string | undefined,
@@ -266,7 +308,7 @@ export async function POST(request: Request) {
               });
               if (input.price) {
                 await addBookingToTrip({
-                  tripId: input.tripId as string,
+                  tripId: resolvedTripId,
                   userId: userId,
                   type: "flight",
                   vendorName: input.carrier as string | undefined,
@@ -278,10 +320,10 @@ export async function POST(request: Request) {
               const flightDesc = `${session.user?.name || "User"} added ${input.carrier || ""} ${input.flightNumber || ""} ${input.origin}→${input.destination}`.trim();
               send({ type: "status", content: `Flight added to trip.` });
               // Log activity + broadcast
-              await logTripActivity(input.tripId as string, userId, "flight_added", flightDesc, {
+              await logTripActivity(resolvedTripId, userId, "flight_added", flightDesc, {
                 flightNumber: input.flightNumber, carrier: input.carrier, origin: input.origin, destination: input.destination, price: input.price,
               });
-              broadcastTripEvent(input.tripId as string, {
+              broadcastTripEvent(resolvedTripId, {
                 type: "segment-added",
                 userId,
                 userName: session.user?.name || session.user?.email || "Unknown",
@@ -297,8 +339,13 @@ export async function POST(request: Request) {
           for (const tc of addHotelCalls) {
             try {
               const input = tc.toolInput;
+              const resolvedHotelTripId = await resolveTripId(input.tripId);
+              if (!resolvedHotelTripId) {
+                send({ type: "status", content: "⚠️ No trip found. Please create a trip first." });
+                continue;
+              }
               await addSegmentToTrip({
-                tripId: input.tripId as string,
+                tripId: resolvedHotelTripId,
                 type: "hotel_night",
                 title: input.hotelName as string,
                 locationName: input.hotelName as string,
@@ -309,7 +356,7 @@ export async function POST(request: Request) {
               });
               if (input.price) {
                 await addBookingToTrip({
-                  tripId: input.tripId as string,
+                  tripId: resolvedHotelTripId,
                   userId: userId,
                   type: "hotel",
                   vendorName: input.hotelName as string,
@@ -322,10 +369,10 @@ export async function POST(request: Request) {
               }
               const hotelDesc = `${session.user?.name || "User"} added hotel ${input.hotelName}`;
               send({ type: "status", content: `Hotel added to trip.` });
-              await logTripActivity(input.tripId as string, userId, "hotel_added", hotelDesc, {
+              await logTripActivity(resolvedHotelTripId, userId, "hotel_added", hotelDesc, {
                 hotelName: input.hotelName, price: input.price, checkIn: input.checkIn, checkOut: input.checkOut,
               });
-              broadcastTripEvent(input.tripId as string, {
+              broadcastTripEvent(resolvedHotelTripId, {
                 type: "segment-added",
                 userId,
                 userName: session.user?.name || session.user?.email || "Unknown",
@@ -714,22 +761,37 @@ async function handleConfirmAction(message: string, userId: string, conversation
           send({ type: "meta", conversationId });
         }
 
-        // If no tripId in message, find the most recent active trip for this user
-        if (!tripId) {
-          const [recentTrip] = await db
-            .select()
+        // If no tripId in message, resolve from conversation → recent planning trip
+        if (!tripId && conversationId) {
+          // Priority 1: trip linked to this conversation
+          const [convTrip] = await db
+            .select({ id: trips.id, title: trips.title })
             .from(trips)
-            .where(eq(trips.userId, userId))
+            .where(eq(trips.conversationId, conversationId))
+            .orderBy(desc(trips.createdAt))
+            .limit(1);
+          if (convTrip) {
+            tripId = convTrip.id;
+            send({ type: "status", content: `Adding to "${convTrip.title}"...` });
+          }
+        }
+
+        if (!tripId) {
+          // Priority 2: user's most recent planning trip
+          const [recentTrip] = await db
+            .select({ id: trips.id, title: trips.title, status: trips.status })
+            .from(trips)
+            .where(and(eq(trips.userId, userId), eq(trips.status, "planning")))
             .orderBy(desc(trips.updatedAt))
             .limit(1);
 
-          if (recentTrip && (recentTrip.status === "planning" || recentTrip.status === "booked")) {
+          if (recentTrip) {
             tripId = recentTrip.id;
             send({ type: "status", content: `Adding to "${recentTrip.title}"...` });
           }
         }
 
-        // Only create a new trip if user truly has none
+        // Only create a new trip as absolute last resort
         if (!tripId) {
           const trip = await createTripFromChat({
             title: "My Trip",
