@@ -10,7 +10,7 @@ import {
 } from "@/lib/db/schema/trips";
 import { orgMemberships } from "@/lib/db/schema";
 import { users } from "@/lib/db/schema/auth";
-import { eq, desc, and, or, inArray, ne } from "drizzle-orm";
+import { eq, desc, and, or, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 async function getUser() {
@@ -402,6 +402,29 @@ export async function addSegmentToTrip(data: {
   details?: Record<string, unknown>;
   sortOrder?: number;
 }) {
+  // Dedup check — skip if same segment already exists on this trip
+  const existing = await db
+    .select({ id: itinerarySegments.id })
+    .from(itinerarySegments)
+    .where(
+      and(
+        eq(itinerarySegments.tripId, data.tripId),
+        eq(itinerarySegments.type, data.type),
+        // Match by flight number for flights, by title for hotels/others
+        data.flightNumber
+          ? eq(itinerarySegments.flightNumber, data.flightNumber)
+          : data.title
+            ? eq(itinerarySegments.title, data.title)
+            : sql`false`
+      )
+    )
+    .limit(1);
+
+  if (existing.length > 0) {
+    // Already exists — return the existing segment without inserting
+    return existing[0];
+  }
+
   const [segment] = await db
     .insert(itinerarySegments)
     .values({
