@@ -125,8 +125,57 @@ export const ADD_HOTEL_TO_TRIP_TOOL = {
   },
 };
 
+export const UPDATE_TRIP_SEGMENT_TOOL = {
+  name: "update_trip_segment",
+  description:
+    "Update an existing flight or hotel segment in a trip. Use this when the user wants to change dates, times, prices, or other details of a segment already added to a trip. You need the segment ID which you can get from the trip details or from the context of the conversation.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      segmentId: {
+        type: "string",
+        description: "The ID of the trip segment to update",
+      },
+      tripId: {
+        type: "string",
+        description: "The trip ID containing the segment",
+      },
+      departureTime: {
+        type: "string",
+        description: "Updated departure time (ISO 8601 datetime, e.g. 2026-04-04T08:00:00)",
+      },
+      arrivalTime: {
+        type: "string",
+        description: "Updated arrival time (ISO 8601 datetime)",
+      },
+      checkIn: {
+        type: "string",
+        description: "Updated hotel check-in date (YYYY-MM-DD)",
+      },
+      checkOut: {
+        type: "string",
+        description: "Updated hotel check-out date (YYYY-MM-DD)",
+      },
+      price: {
+        type: "number",
+        description: "Updated price",
+      },
+      currency: {
+        type: "string",
+        description: "Currency code (e.g. USD, GBP)",
+      },
+      notes: {
+        type: "string",
+        description: "Updated notes or special instructions",
+      },
+    },
+    required: ["segmentId", "tripId"],
+  },
+};
+
 export const ALL_TRIP_TOOLS = [
   CREATE_TRIP_TOOL,
   ADD_FLIGHT_TO_TRIP_TOOL,
   ADD_HOTEL_TO_TRIP_TOOL,
+  UPDATE_TRIP_SEGMENT_TOOL,
 ];

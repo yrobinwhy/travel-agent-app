@@ -439,6 +439,54 @@ export async function deleteSegment(formData: FormData) {
   revalidatePath(`/trips/${tripId}`);
 }
 
+/** Update a trip segment (called from chat tool use) */
+export async function updateTripSegmentFromChat(data: {
+  segmentId: string;
+  tripId: string;
+  userId: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  checkIn?: string;
+  checkOut?: string;
+  price?: number;
+  currency?: string;
+  notes?: string;
+}) {
+  // Verify trip ownership or edit access
+  const [trip] = await db
+    .select()
+    .from(trips)
+    .where(eq(trips.id, data.tripId));
+  if (!trip) throw new Error("Trip not found");
+
+  // Get the existing segment
+  const [segment] = await db
+    .select()
+    .from(itinerarySegments)
+    .where(eq(itinerarySegments.id, data.segmentId));
+  if (!segment) throw new Error("Segment not found");
+
+  // Build update object
+  const updates: Record<string, unknown> = {};
+
+  if (data.departureTime) updates.departureTime = data.departureTime;
+  if (data.arrivalTime) updates.arrivalTime = data.arrivalTime;
+  if (data.checkIn) updates.startDate = data.checkIn;
+  if (data.checkOut) updates.endDate = data.checkOut;
+  if (data.price !== undefined) updates.price = String(data.price);
+  if (data.currency) updates.currency = data.currency;
+  if (data.notes) updates.notes = data.notes;
+
+  if (Object.keys(updates).length === 0) throw new Error("No updates provided");
+
+  await db
+    .update(itinerarySegments)
+    .set(updates)
+    .where(eq(itinerarySegments.id, data.segmentId));
+
+  return { success: true, segmentId: data.segmentId };
+}
+
 // ============================================
 // BOOKINGS
 // ============================================

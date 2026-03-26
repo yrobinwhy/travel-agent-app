@@ -82,7 +82,6 @@ export function SmartInviteForm({ orgId, action }: SmartInviteFormProps) {
           >
             <option value="member">Member</option>
             <option value="admin">Admin</option>
-            <option value="viewer">Viewer</option>
           </select>
         </div>
         <SubmitButton size="sm">

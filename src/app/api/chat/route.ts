@@ -300,6 +300,34 @@ export async function POST(request: Request) {
             }
           }
 
+          // Handle update_trip_segment
+          const updateSegmentCalls = toolCalls.filter(
+            (tc) => tc.toolName === "update_trip_segment"
+          );
+          for (const tc of updateSegmentCalls) {
+            try {
+              const input = tc.toolInput;
+              const { updateTripSegmentFromChat } = await import("@/lib/db/queries/trips");
+              await updateTripSegmentFromChat({
+                segmentId: input.segmentId as string,
+                tripId: input.tripId as string,
+                userId: userId,
+                departureTime: input.departureTime as string | undefined,
+                arrivalTime: input.arrivalTime as string | undefined,
+                checkIn: input.checkIn as string | undefined,
+                checkOut: input.checkOut as string | undefined,
+                price: input.price as number | undefined,
+                currency: input.currency as string | undefined,
+                notes: input.notes as string | undefined,
+              });
+              const { logTripActivity } = await import("@/lib/db/queries/activity");
+              await logTripActivity(input.tripId as string, userId, "segment_updated", "Updated trip segment details");
+              send({ type: "status", content: "✅ Segment updated." });
+            } catch {
+              send({ type: "status", content: "Could not update segment." });
+            }
+          }
+
           // Handle save_loyalty_program
           const loyaltyCalls = toolCalls.filter(
             (tc) => tc.toolName === "save_loyalty_program"

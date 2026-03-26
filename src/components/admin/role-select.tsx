@@ -32,7 +32,6 @@ export function RoleSelect({
     >
       <option value="admin">Admin</option>
       <option value="member">Member</option>
-      <option value="viewer">Viewer</option>
     </select>
   );
 }

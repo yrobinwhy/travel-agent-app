@@ -64,6 +64,44 @@ export async function markTripViewed(tripId: string) {
   }
 }
 
+/** Mark all accessible trips as viewed (called when user visits /trips list) */
+export async function markAllTripsViewed() {
+  const user = await getUser();
+  const { orgMemberships } = await import("@/lib/db/schema");
+  const { inArray, ne } = await import("drizzle-orm");
+
+  const userTrips = await db.select({ id: trips.id }).from(trips).where(eq(trips.userId, user.id!));
+  const memberships = await db.select({ orgId: orgMemberships.orgId }).from(orgMemberships).where(eq(orgMemberships.userId, user.id!));
+  const orgIds = memberships.map((m) => m.orgId);
+
+  let sharedTrips: { id: string }[] = [];
+  if (orgIds.length > 0) {
+    sharedTrips = await db
+      .select({ id: trips.id })
+      .from(trips)
+      .where(and(inArray(trips.orgId, orgIds), ne(trips.userId, user.id!)));
+  }
+
+  const allTripIds = [...userTrips, ...sharedTrips].map((t) => t.id);
+  if (allTripIds.length === 0) return;
+
+  // Upsert all trips as viewed
+  for (const tripId of allTripIds) {
+    const [existing] = await db
+      .select()
+      .from(tripLastViewed)
+      .where(and(eq(tripLastViewed.tripId, tripId), eq(tripLastViewed.userId, user.id!)));
+
+    if (existing) {
+      await db.update(tripLastViewed).set({ viewedAt: new Date() }).where(eq(tripLastViewed.id, existing.id));
+    } else {
+      await db.insert(tripLastViewed).values({ tripId, userId: user.id! });
+    }
+  }
+
+  revalidatePath("/trips");
+}
+
 /** Check if any trips have activity BY OTHER USERS since the current user last viewed them */
 export async function hasUnviewedTripUpdates(): Promise<boolean> {
   const user = await getUser();
