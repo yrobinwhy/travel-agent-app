@@ -43,6 +43,11 @@ function getRedisLimiters(): Record<string, Ratelimit> | null {
       limiter: Ratelimit.slidingWindow(10, "60 s"),
       prefix: "rl:chatDelete",
     }),
+    hotelDetails: new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(20, "60 s"),
+      prefix: "rl:hotelDetails",
+    }),
   };
 
   return redisRatelimiters;
@@ -121,4 +126,5 @@ export const RATE_LIMITS = {
   api: { maxRequests: 60, windowMs: 60_000 },
   chatRead: { maxRequests: 60, windowMs: 60_000 },
   chatDelete: { maxRequests: 10, windowMs: 60_000 },
+  hotelDetails: { maxRequests: 20, windowMs: 60_000 },
 } as const;

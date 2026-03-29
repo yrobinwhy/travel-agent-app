@@ -8,6 +8,7 @@ import { FlightResultsCard } from "./flight-results-card";
 import type { FlightOffer, FlightResultData } from "./flight-results-card";
 import { HotelResultsCard } from "./hotel-results-card";
 import type { HotelOfferDisplay, HotelResultData } from "./hotel-results-card";
+import { HotelDeepDiveSheet } from "./hotel-deep-dive-sheet";
 import { toast } from "sonner";
 import { FlightSearchSkeleton, HotelSearchSkeleton } from "./search-skeleton";
 import { DEFAULT_MODEL_ID, AVAILABLE_MODELS } from "@/lib/ai/providers";
@@ -57,6 +58,7 @@ export function ChatPanel() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [showHistory, setShowHistory] = useState(true); // Show by default
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [deepDiveHotel, setDeepDiveHotel] = useState<HotelOfferDisplay | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
@@ -338,6 +340,7 @@ export function ChatPanel() {
                   {msg.hotelResults && (
                     <HotelResultsCard
                       results={msg.hotelResults as unknown as HotelResultData}
+                      onHotelDeepDive={(offer: HotelOfferDisplay) => setDeepDiveHotel(offer)}
                       onSelectHotel={(offer: HotelOfferDisplay) => {
                         const tripId = chatStore.getActiveTripId();
                         const tripRef = tripId ? ` Use tripId="${tripId}".` : "";
@@ -380,6 +383,20 @@ export function ChatPanel() {
           isLoading={isLoading}
         />
       </div>
+
+      {/* Hotel Deep-Dive Sheet */}
+      <HotelDeepDiveSheet
+        hotel={deepDiveHotel}
+        onClose={() => setDeepDiveHotel(null)}
+        onSelectHotel={(offer: HotelOfferDisplay) => {
+          setDeepDiveHotel(null);
+          const tripId = chatStore.getActiveTripId();
+          const tripRef = tripId ? ` Use tripId="${tripId}".` : "";
+          const selectMsg = `CONFIRM: Add ${offer.name} (${offer.starRating ? offer.starRating + "-star, " : ""}$${offer.pricePerNight}/night, ${offer.nights} nights, total $${offer.totalPrice}) to my trip as hotel.${tripRef} Do NOT create a new trip — use add_hotel_to_trip tool immediately.`;
+          chatStore.sendMessage(selectMsg, modelId);
+          toast.info(`Adding ${offer.name} to trip...`);
+        }}
+      />
     </div>
   );
 }

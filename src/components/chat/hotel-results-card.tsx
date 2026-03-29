@@ -45,6 +45,15 @@ export interface HotelOfferDisplay {
   tripAdvisorRating?: number;
   tripAdvisorReviews?: number;
   tripAdvisorRank?: string;
+  // Deep-dive fields (already flow from server, now typed)
+  providerOfferId?: string;
+  latitude?: number;
+  longitude?: number;
+  checkIn?: string;
+  checkOut?: string;
+  guests?: number;
+  locationRating?: number;
+  reviewBreakdown?: Array<{ name: string; positive: number; negative: number; total: number }>;
 }
 
 export interface HotelResultData {
@@ -66,6 +75,7 @@ const SORT_OPTIONS: { id: SortOption; label: string; icon: React.ComponentType<{
 interface HotelResultsCardProps {
   results: HotelResultData;
   onSelectHotel?: (offer: HotelOfferDisplay) => void;
+  onHotelDeepDive?: (offer: HotelOfferDisplay) => void;
   onActionChip?: (text: string) => void;
 }
 
@@ -88,7 +98,7 @@ function AmenityIcon({ amenity }: { amenity: string }) {
   return null;
 }
 
-export function HotelResultsCard({ results, onSelectHotel, onActionChip }: HotelResultsCardProps) {
+export function HotelResultsCard({ results, onSelectHotel, onHotelDeepDive, onActionChip }: HotelResultsCardProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false); // Prevent double-click and double-add
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -179,44 +189,64 @@ export function HotelResultsCard({ results, onSelectHotel, onActionChip }: Hotel
             const isSelected = selectedId === offer.id;
             const isExpanded = expandedId === offer.id;
 
+            const hasDeepDive = offer.providerOfferId && !offer.providerOfferId.startsWith("serpapi-");
+
             return (
               <div key={offer.id}>
                 <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleSelect(offer)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleSelect(offer); }}
                   className={cn(
-                    "w-full px-4 py-3 flex items-center gap-3 transition-all text-left cursor-pointer",
+                    "w-full px-4 py-3 flex items-center gap-3 transition-all text-left",
                     isSelected
                       ? "bg-purple-500/15 ring-1 ring-inset ring-purple-500/30"
                       : "hover:bg-muted/50",
                     i === 0 && !isSelected && "bg-purple-500/5"
                   )}
                 >
-                  {/* Selection */}
-                  <div className={cn(
-                    "flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
-                    isSelected ? "border-purple-500 bg-purple-500" : "border-muted-foreground/30"
-                  )}>
+                  {/* Selection radio — add to trip */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelect(offer)}
+                    className={cn(
+                      "flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors cursor-pointer",
+                      isSelected ? "border-purple-500 bg-purple-500" : "border-muted-foreground/30 hover:border-purple-500/50"
+                    )}
+                    title="Add to trip"
+                  >
                     {isSelected && <Check className="w-3 h-3 text-white" />}
-                  </div>
+                  </button>
 
-                  {/* Image thumbnail */}
+                  {/* Image thumbnail — deep-dive trigger */}
                   {offer.images[0] && (
-                    <div className="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-muted">
+                    <button
+                      type="button"
+                      onClick={() => hasDeepDive && onHotelDeepDive?.(offer)}
+                      className={cn(
+                        "flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-muted",
+                        hasDeepDive && "cursor-pointer hover:ring-2 hover:ring-purple-500/40 transition-all"
+                      )}
+                    >
                       <img
                         src={offer.images[0]}
                         alt={offer.name}
                         className="w-full h-full object-cover"
                       />
-                    </div>
+                    </button>
                   )}
 
                   {/* Hotel info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-xs font-medium truncate">{offer.name}</p>
+                      {/* Hotel name — deep-dive trigger */}
+                      <button
+                        type="button"
+                        onClick={() => hasDeepDive && onHotelDeepDive?.(offer)}
+                        className={cn(
+                          "text-xs font-medium truncate text-left",
+                          hasDeepDive && "hover:underline hover:text-purple-400 cursor-pointer transition-colors"
+                        )}
+                      >
+                        {offer.name}
+                      </button>
                       {offer.starRating && <StarRating stars={offer.starRating} />}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
@@ -283,10 +313,7 @@ export function HotelResultsCard({ results, onSelectHotel, onActionChip }: Hotel
                   {/* Expand */}
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setExpandedId(expandedId === offer.id ? null : offer.id);
-                    }}
+                    onClick={() => setExpandedId(expandedId === offer.id ? null : offer.id)}
                     className="flex-shrink-0 p-1 text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
