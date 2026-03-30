@@ -85,46 +85,12 @@ async function enrichWithTripAdvisor(offers: HotelOffer[], location: string): Pr
   if (!apiKey || offers.length === 0) return offers;
 
   try {
-    // Search for TripAdvisor TRAVELER RANKED hotels (not featured/value sort)
-    const searchParams = new URLSearchParams({
-      engine: "google",
-      q: `"traveler ranked" hotels ${location} site:tripadvisor.com`,
-      api_key: apiKey,
-      num: "10",
-    });
-
-    const response = await fetch(`https://serpapi.com/search.json?${searchParams.toString()}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!response.ok) return offers;
-
-    const data = await response.json();
-    const results = data.organic_results || [];
-
-    // Extract total hotel count from title like "THE 10 BEST Hotels in Lisbon, Portugal 2026 (from $43)"
-    const totalMatch = results[0]?.snippet?.match(/of\s+(\d[\d,]*)\s+hotel/i) ||
-      results[0]?.title?.match(/(\d[\d,]*)\s+BEST/i);
-
-    // Build a ranking map from snippets: "1. Hotel Da Baixa · 2. Corpo Santo..."
-    const rankingMap = new Map<string, number>();
-    for (const r of results) {
-      const snippet = (r.snippet || "") + " " + (r.title || "");
-      // Match patterns like "1. Hotel Name" or "· 1. Hotel Name"
-      const matches = snippet.matchAll(/(\d+)\.\s+([^·•\d]+?)(?:\s*[·•]|\s*$)/g);
-      for (const m of matches) {
-        const rank = parseInt(m[1]);
-        const name = m[2].trim();
-        if (rank > 0 && name.length > 3) {
-          rankingMap.set(name.toLowerCase(), rank);
-        }
-      }
-    }
 
     // Search for each hotel individually to get exact "ranked #X of Y" Traveler Ranking
     // We search top 6 hotels in parallel, each with "ranked" keyword to get the ranking snippet
     const taData = new Map<string, { rating?: number; reviews?: number; rankText?: string }>();
 
-    const topOffers = offers.slice(0, 6);
+    const topOffers = offers.slice(0, 10);
     const hotelSearches = topOffers.map(async (offer) => {
       try {
         // Use first 3-4 significant words of hotel name for targeted search
@@ -176,29 +142,11 @@ async function enrichWithTripAdvisor(offers: HotelOffer[], location: string): Pr
     // Enrich offers with TripAdvisor data
     return offers.map((offer) => {
       const ta = taData.get(offer.id);
-
-      // Also check city ranking list for name matches
-      const nameLower = offer.name.toLowerCase();
-      let cityRank: number | undefined;
-      for (const [taName, taRank] of rankingMap) {
-        const offerWords = nameLower.split(/\s+/).filter(w => w.length > 3);
-        const taWords = taName.split(/\s+/).filter(w => w.length > 3);
-        const overlap = offerWords.filter(w => taWords.some(tw => tw.includes(w) || w.includes(tw)));
-        if (overlap.length >= 2 || (overlap.length >= 1 && offerWords.length <= 2)) {
-          cityRank = taRank;
-          break;
-        }
-      }
-
-      // Prefer the exact "ranked #X of Y" from individual hotel page (Traveler Ranked)
-      const rankText = ta?.rankText ||
-        (cityRank ? `#${cityRank} in ${location}` : undefined);
-
       return {
         ...offer,
         tripAdvisorRating: ta?.rating || offer.tripAdvisorRating,
         tripAdvisorReviews: ta?.reviews || offer.tripAdvisorReviews,
-        tripAdvisorRank: rankText || offer.tripAdvisorRank,
+        tripAdvisorRank: ta?.rankText || offer.tripAdvisorRank,
       };
     });
   } catch {
