@@ -120,52 +120,58 @@ async function enrichWithTripAdvisor(offers: HotelOffer[], location: string): Pr
       }
     }
 
-    // Search for each hotel individually on TripAdvisor to get Traveler Ranked position
-    // "ranked #X of Y hotels in [city]" appears in Google snippets for TA hotel pages
-    const hotelNames = offers.slice(0, 8).map(o => o.name);
-    const hotelQuery = hotelNames.map(n => `"${n.split(" ").slice(0, 3).join(" ")}"`).join(" OR ");
-    const hotelSearchParams = new URLSearchParams({
-      engine: "google",
-      q: `(${hotelQuery}) ${location} hotel site:tripadvisor.com`,
-      api_key: apiKey,
-      num: "15",
-    });
-
-    const hotelResponse = await fetch(`https://serpapi.com/search.json?${hotelSearchParams.toString()}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    // Map: hotel id → { rating, reviews, rank text }
+    // Search for each hotel individually to get exact "ranked #X of Y" Traveler Ranking
+    // We search top 6 hotels in parallel, each with "ranked" keyword to get the ranking snippet
     const taData = new Map<string, { rating?: number; reviews?: number; rankText?: string }>();
 
-    if (hotelResponse.ok) {
-      const hotelData = await hotelResponse.json();
-      for (const r of (hotelData.organic_results || [])) {
-        const snippet = (r.snippet || "") + " " + (r.title || "");
-        const rich = r.rich_snippet?.top?.detected_extensions;
+    const topOffers = offers.slice(0, 6);
+    const hotelSearches = topOffers.map(async (offer) => {
+      try {
+        // Use first 3-4 significant words of hotel name for targeted search
+        const nameForSearch = offer.name.split(/\s+/).slice(0, 4).join(" ");
+        const params = new URLSearchParams({
+          engine: "google",
+          q: `"${nameForSearch}" "ranked #" site:tripadvisor.com`,
+          api_key: apiKey,
+          num: "2",
+        });
+        const res = await fetch(`https://serpapi.com/search.json?${params.toString()}`, {
+          signal: AbortSignal.timeout(6000),
+        });
+        if (!res.ok) return;
 
-        // Extract "ranked #X of Y hotels in City" from snippet
-        const rankMatch = snippet.match(/ranked\s+#(\d+)\s+of\s+([\d,]+)\s+hotels/i);
+        const data = await res.json();
+        for (const r of (data.organic_results || [])) {
+          const snippet = (r.snippet || "");
+          const rich = r.rich_snippet?.top?.detected_extensions;
 
-        // Match to our offers by name
-        const title = (r.title || "").toLowerCase();
-        for (const offer of offers) {
-          // Check if TripAdvisor result title contains the hotel name (first 2-3 words)
-          const nameWords = offer.name.toLowerCase().split(/\s+/).filter(w => w.length > 2).slice(0, 3);
-          const matchCount = nameWords.filter(w => title.includes(w)).length;
-
-          if (matchCount >= 2 || (matchCount >= 1 && nameWords.length <= 2)) {
+          // Extract "ranked #X of Y hotels in City"
+          const rankMatch = snippet.match(/ranked\s+#(\d+)\s+of\s+([\d,]+)\s+hotels/i);
+          if (rankMatch) {
             taData.set(offer.id, {
               rating: rich?.rating,
               reviews: rich?.reviews,
-              rankText: rankMatch
-                ? `#${rankMatch[1]} of ${rankMatch[2]} hotels in ${location}`
-                : undefined,
+              rankText: `#${rankMatch[1]} of ${rankMatch[2]} hotels in ${location}`,
             });
-            break; // One match per result
+            return; // Found it
+          }
+
+          // Also accept rich snippet data without explicit ranking text
+          if (rich?.rating) {
+            taData.set(offer.id, {
+              rating: rich.rating,
+              reviews: rich.reviews,
+              rankText: undefined,
+            });
           }
         }
+      } catch {
+        // Individual hotel search failed — skip silently
       }
-    }
+    });
+
+    // Run all hotel searches in parallel (max 6 concurrent)
+    await Promise.allSettled(hotelSearches);
 
     // Enrich offers with TripAdvisor data
     return offers.map((offer) => {
