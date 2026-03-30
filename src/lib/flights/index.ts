@@ -8,6 +8,7 @@ import type {
 } from "./types";
 import { duffelProvider } from "./providers/duffel";
 import { serpapiProvider } from "./providers/serpapi";
+import { cacheGet, cacheSet, flightCacheKey, CACHE_TTL } from "@/lib/cache";
 import { sabreProvider } from "./providers/sabre";
 
 export type { FlightSearchParams, FlightSearchResult, FlightOffer } from "./types";
@@ -20,6 +21,18 @@ const providers: FlightSearchProvider[] = [duffelProvider, serpapiProvider, sabr
 export async function searchFlights(
   params: FlightSearchParams
 ): Promise<FlightSearchResult> {
+  // Check cache first (15-minute TTL — flight prices are volatile)
+  const cKey = flightCacheKey(
+    params.origin,
+    params.destination,
+    params.departureDate,
+    params.cabinClass || "economy"
+  );
+  const cached = await cacheGet<FlightSearchResult>(cKey);
+  if (cached) {
+    return { ...cached, searchedAt: cached.searchedAt }; // Keep original timestamp for staleness check
+  }
+
   const activeProviders = providers.filter((p) => p.isAvailable());
 
   if (activeProviders.length === 0) {
@@ -80,7 +93,7 @@ export async function searchFlights(
 
   const bestValueOffer = allOffers.find((o) => o.valueScore !== undefined)?.id;
 
-  return {
+  const result: FlightSearchResult = {
     params,
     offers: allOffers,
     searchedAt: new Date().toISOString(),
@@ -93,6 +106,13 @@ export async function searchFlights(
         : `${Math.floor(fastest / 60)}h ${fastest % 60}m`,
     bestValue: bestValueOffer,
   };
+
+  // Cache results (15 min TTL)
+  if (allOffers.length > 0) {
+    await cacheSet(cKey, result, CACHE_TTL.flightSearch).catch(() => {});
+  }
+
+  return result;
 }
 
 /**

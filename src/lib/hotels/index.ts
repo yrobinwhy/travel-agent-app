@@ -7,6 +7,7 @@ import type {
   HotelSearchProvider,
 } from "./types";
 import { serpapiHotelProvider } from "./providers/serpapi";
+import { cacheGet, cacheSet, taCacheKey, CACHE_TTL } from "@/lib/cache";
 
 export type { HotelSearchParams, HotelSearchResult, HotelOffer } from "./types";
 
@@ -87,13 +88,22 @@ async function enrichWithTripAdvisor(offers: HotelOffer[], location: string): Pr
   try {
 
     // Search for each hotel individually to get exact "ranked #X of Y" Traveler Ranking
-    // We search top 6 hotels in parallel, each with "ranked" keyword to get the ranking snippet
-    const taData = new Map<string, { rating?: number; reviews?: number; rankText?: string }>();
+    // Cache results for 24 hours (rankings don't change fast)
+    type TAResult = { rating?: number; reviews?: number; rankText?: string };
+    const taData = new Map<string, TAResult>();
 
     const topOffers = offers.slice(0, 10);
     const hotelSearches = topOffers.map(async (offer) => {
       try {
-        // Use first 3-4 significant words of hotel name for targeted search
+        // Check cache first
+        const cacheKey = taCacheKey(offer.name, location);
+        const cached = await cacheGet<TAResult>(cacheKey);
+        if (cached) {
+          taData.set(offer.id, cached);
+          return; // Cache hit — skip API call
+        }
+
+        // Cache miss — search SerpApi
         const nameForSearch = offer.name.split(/\s+/).slice(0, 4).join(" ");
         const params = new URLSearchParams({
           engine: "google",
@@ -114,21 +124,25 @@ async function enrichWithTripAdvisor(offers: HotelOffer[], location: string): Pr
           // Extract "ranked #X of Y hotels in City"
           const rankMatch = snippet.match(/ranked\s+#(\d+)\s+of\s+([\d,]+)\s+hotels/i);
           if (rankMatch) {
-            taData.set(offer.id, {
+            const result: TAResult = {
               rating: rich?.rating,
               reviews: rich?.reviews,
               rankText: `#${rankMatch[1]} of ${rankMatch[2]} hotels in ${location}`,
-            });
-            return; // Found it
+            };
+            taData.set(offer.id, result);
+            await cacheSet(cacheKey, result, CACHE_TTL.tripAdvisorRanking);
+            return;
           }
 
           // Also accept rich snippet data without explicit ranking text
           if (rich?.rating) {
-            taData.set(offer.id, {
+            const result: TAResult = {
               rating: rich.rating,
               reviews: rich.reviews,
               rankText: undefined,
-            });
+            };
+            taData.set(offer.id, result);
+            await cacheSet(cacheKey, result, CACHE_TTL.tripAdvisorRanking);
           }
         }
       } catch {

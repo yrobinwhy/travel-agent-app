@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth";
 import { fetchHotelDetails } from "@/lib/hotels/details";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { cacheGet, cacheSet, hotelDetailCacheKey, CACHE_TTL } from "@/lib/cache";
+import type { HotelDetail } from "@/lib/hotels/types";
 
 export const maxDuration = 15;
 
@@ -38,6 +40,13 @@ export async function GET(request: Request) {
   }
 
   try {
+    // Check cache first (6-hour TTL)
+    const cacheKey = hotelDetailCacheKey(propertyToken, checkIn, checkOut);
+    const cached = await cacheGet<HotelDetail>(cacheKey);
+    if (cached) {
+      return Response.json(cached);
+    }
+
     const detail = await fetchHotelDetails({
       propertyToken,
       location,
@@ -46,6 +55,9 @@ export async function GET(request: Request) {
       adults: adults ? parseInt(adults) : undefined,
       currency: currency || undefined,
     });
+
+    // Cache the result
+    await cacheSet(cacheKey, detail, CACHE_TTL.hotelDetail);
 
     return Response.json(detail);
   } catch (err) {
