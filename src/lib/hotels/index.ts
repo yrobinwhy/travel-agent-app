@@ -86,72 +86,171 @@ async function enrichWithTripAdvisor(offers: HotelOffer[], location: string): Pr
   if (!apiKey || offers.length === 0) return offers;
 
   try {
-
-    // Search for each hotel individually to get exact "ranked #X of Y" Traveler Ranking
-    // Cache results for 24 hours (rankings don't change fast)
     type TAResult = { rating?: number; reviews?: number; rankText?: string };
     const taData = new Map<string, TAResult>();
 
+    // Extract the city name from location for matching (e.g. "Lisbon, Portugal" → "Lisbon")
+    const cityName = location.split(",")[0].trim();
+
     const topOffers = offers.slice(0, 10);
+
+    // --- Pass 1: Search each hotel with a broad query (no "ranked #" requirement) ---
     const hotelSearches = topOffers.map(async (offer) => {
       try {
-        // Check cache first
         const cacheKey = taCacheKey(offer.name, location);
         const cached = await cacheGet<TAResult>(cacheKey);
         if (cached) {
           taData.set(offer.id, cached);
-          return; // Cache hit — skip API call
+          return;
         }
 
-        // Cache miss — search SerpApi
-        const nameForSearch = offer.name.split(/\s+/).slice(0, 4).join(" ");
+        // Use the most distinctive part of the hotel name (first 3 words, skip common prefixes)
+        const nameWords = offer.name
+          .replace(/^(hotel|the)\s+/i, "")
+          .split(/\s+/)
+          .filter((w) => w.length > 1);
+        const nameForSearch = nameWords.slice(0, 3).join(" ");
+
+        // Broader query — don't require "ranked #" in the page, just find the TA listing
         const params = new URLSearchParams({
           engine: "google",
-          q: `"${nameForSearch}" "ranked #" site:tripadvisor.com`,
+          q: `${nameForSearch} hotel ${cityName} site:tripadvisor.com`,
           api_key: apiKey,
-          num: "2",
+          num: "5",
         });
         const res = await fetch(`https://serpapi.com/search.json?${params.toString()}`, {
-          signal: AbortSignal.timeout(6000),
+          signal: AbortSignal.timeout(8000),
         });
         if (!res.ok) return;
 
         const data = await res.json();
-        for (const r of (data.organic_results || [])) {
-          const snippet = (r.snippet || "");
+        const results = data.organic_results || [];
+
+        // Also check the knowledge graph / right-side panel
+        const knowledgeSnippet = data.knowledge_graph?.description || "";
+
+        let bestResult: TAResult | null = null;
+
+        for (const r of results) {
+          const snippet = (r.snippet || "") + " " + (r.rich_snippet?.bottom?.text || "");
+          const title = r.title || "";
+          const link = r.link || "";
           const rich = r.rich_snippet?.top?.detected_extensions;
 
-          // Extract "ranked #X of Y hotels in City"
-          const rankMatch = snippet.match(/ranked\s+#(\d+)\s+of\s+([\d,]+)\s+hotels/i);
+          // Only consider TripAdvisor Hotel_Review pages (not forum posts, etc.)
+          if (!link.includes("tripadvisor.com")) continue;
+          const isHotelPage = link.includes("Hotel_Review") || link.includes("Hotels-");
+
+          // Verify the result is about this hotel (fuzzy name match)
+          const nameLower = offer.name.toLowerCase();
+          const titleLower = title.toLowerCase();
+          const nameMatch =
+            nameWords.slice(0, 2).every((w) => titleLower.includes(w.toLowerCase())) ||
+            titleLower.includes(nameLower.slice(0, 20));
+          if (!isHotelPage && !nameMatch) continue;
+
+          // Try to extract "ranked #X of Y hotels" from snippet, title, or rich snippet text
+          const allText = `${snippet} ${title} ${knowledgeSnippet}`;
+          const rankMatch = allText.match(/(?:#|ranked\s+#?)(\d+)\s+of\s+([\d,]+)\s+hotel/i);
+
           if (rankMatch) {
-            const result: TAResult = {
-              rating: rich?.rating,
-              reviews: rich?.reviews,
+            bestResult = {
+              rating: rich?.rating || bestResult?.rating,
+              reviews: rich?.reviews || bestResult?.reviews,
               rankText: `#${rankMatch[1]} of ${rankMatch[2]} hotels in ${location}`,
             };
-            taData.set(offer.id, result);
-            await cacheSet(cacheKey, result, CACHE_TTL.tripAdvisorRanking);
-            return;
+            break; // Found ranking — done
           }
 
-          // Also accept rich snippet data without explicit ranking text
-          if (rich?.rating) {
-            const result: TAResult = {
+          // Even without explicit ranking text, grab rating from rich snippet
+          if (rich?.rating && !bestResult) {
+            bestResult = {
               rating: rich.rating,
               reviews: rich.reviews,
               rankText: undefined,
             };
-            taData.set(offer.id, result);
-            await cacheSet(cacheKey, result, CACHE_TTL.tripAdvisorRanking);
+            // Don't break — keep looking for one with explicit ranking
           }
+
+          // Check the TripAdvisor meta text that sometimes appears
+          // e.g. "4.5 of 5 · 2,345 reviews · #12 Best Value of 456 Hotels in Lisbon"
+          // We want Traveler Ranked, but will take any ranking as fallback
+          const metaRank = allText.match(/#(\d+)\s+(?:Best Value|Traveler Ranked?)\s+(?:of\s+)?([\d,]+)/i);
+          if (metaRank && !bestResult?.rankText) {
+            bestResult = {
+              rating: rich?.rating || bestResult?.rating,
+              reviews: rich?.reviews || bestResult?.reviews,
+              rankText: `#${metaRank[1]} of ${metaRank[2]} hotels in ${location}`,
+            };
+          }
+        }
+
+        if (bestResult) {
+          taData.set(offer.id, bestResult);
+          await cacheSet(cacheKey, bestResult, CACHE_TTL.tripAdvisorRanking);
         }
       } catch {
         // Individual hotel search failed — skip silently
       }
     });
 
-    // Run all hotel searches in parallel (max 6 concurrent)
     await Promise.allSettled(hotelSearches);
+
+    // --- Pass 2: For hotels that got a rating but NO rank text, try a targeted search ---
+    const missingRankOffers = topOffers.filter((offer) => {
+      const ta = taData.get(offer.id);
+      return !ta?.rankText; // No ranking found yet
+    });
+
+    if (missingRankOffers.length > 0) {
+      const pass2Searches = missingRankOffers.map(async (offer) => {
+        try {
+          // Skip if we already have a ranking
+          const existing = taData.get(offer.id);
+          if (existing?.rankText) return;
+
+          const cacheKey = taCacheKey(offer.name, location);
+
+          // More targeted query specifically requesting ranking info
+          const nameWords = offer.name
+            .replace(/^(hotel|the)\s+/i, "")
+            .split(/\s+/)
+            .filter((w) => w.length > 1);
+          const shortName = nameWords.slice(0, 2).join(" ");
+
+          const params = new URLSearchParams({
+            engine: "google",
+            q: `"${shortName}" tripadvisor ${cityName} "of" hotels ranked`,
+            api_key: apiKey,
+            num: "3",
+          });
+          const res = await fetch(`https://serpapi.com/search.json?${params.toString()}`, {
+            signal: AbortSignal.timeout(6000),
+          });
+          if (!res.ok) return;
+
+          const data = await res.json();
+          for (const r of (data.organic_results || [])) {
+            const allText = `${r.snippet || ""} ${r.title || ""}`;
+            const rankMatch = allText.match(/(?:#|ranked\s+#?)(\d+)\s+of\s+([\d,]+)\s+hotel/i);
+            if (rankMatch) {
+              const result: TAResult = {
+                rating: existing?.rating || r.rich_snippet?.top?.detected_extensions?.rating,
+                reviews: existing?.reviews || r.rich_snippet?.top?.detected_extensions?.reviews,
+                rankText: `#${rankMatch[1]} of ${rankMatch[2]} hotels in ${location}`,
+              };
+              taData.set(offer.id, result);
+              await cacheSet(cacheKey, result, CACHE_TTL.tripAdvisorRanking);
+              return;
+            }
+          }
+        } catch {
+          // Pass 2 failed — keep whatever we had from pass 1
+        }
+      });
+
+      await Promise.allSettled(pass2Searches);
+    }
 
     // Enrich offers with TripAdvisor data
     return offers.map((offer) => {

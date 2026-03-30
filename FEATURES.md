@@ -45,6 +45,22 @@ Searches across multiple sources simultaneously to find the best options for you
 - Compare cash prices vs. point redemptions
 - Preferences learned over time (you stayed at Park Hyatt Tokyo twice and loved it — should we book again?)
 
+#### Hotel Deep-Dive Panel
+
+Click any hotel name in search results to open a rich detail sheet with:
+
+- **Photo gallery** — horizontal scroll-snap with hero image and thumbnails
+- **Dual ratings** — Google rating (blue card with score, text, review count) AND TripAdvisor Traveler Ranking (green card with trophy icon, "#X of Y hotels in City", TA rating/reviews)
+- **Review breakdown** — category bars (Cleanliness, Service, Location, etc.) with positive percentage
+- **Sample reviews** — 3-5 excerpts from guests, expandable
+- **Full amenities** — categorized grid with icons
+- **Map link** — Google Maps link to hotel location
+- **Nearby places** — grouped by type (restaurants, attractions, transit)
+- **Price comparison** — table of booking sites sorted cheapest first, with external booking links
+- **Add to Trip** — sticky footer with price and one-click add to current trip
+
+TripAdvisor enrichment uses a two-pass search strategy: broad Google search to find TripAdvisor listings, then targeted follow-up for hotels missing ranking data. Results cached 24 hours in Redis.
+
 ### 4. Points & Loyalty Optimization
 
 Maximize the value of every point across all your credit card and loyalty programs.
@@ -400,6 +416,22 @@ These are on the roadmap and the system is designed to support them:
 2. Set up your profile: add your frequent flyer numbers, credit cards, and preferences
 3. Create or join your family and/or business organization
 4. Start chatting: *"Plan a trip to..."*
+
+---
+
+---
+
+## Performance & Caching
+
+Three-tier Redis caching (Upstash) reduces API calls and improves response times:
+
+| Data | TTL | Rationale |
+|------|-----|-----------|
+| TripAdvisor rankings | 24 hours | Rankings change slowly |
+| Hotel detail pages | 6 hours | Prices change moderately |
+| Flight search results | 15 minutes | Prices are volatile |
+
+Falls back to in-memory cache when Redis is unavailable (local dev).
 
 ---
 
