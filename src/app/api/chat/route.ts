@@ -661,6 +661,11 @@ export async function POST(request: Request) {
             try {
               const hotelResult = await searchHotels(hotelParams);
 
+              // Inject location into each offer for deep-dive detail API
+              for (const offer of hotelResult.offers) {
+                (offer as unknown as Record<string, unknown>).location = hotelParams.location;
+              }
+
               send({
                 type: "hotel_results",
                 content: JSON.stringify(hotelResult),

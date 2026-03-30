@@ -21,6 +21,7 @@ export async function fetchHotelDetails(
 
   const searchParams = new URLSearchParams({
     engine: "google_hotels",
+    q: params.location,
     property_token: params.propertyToken,
     check_in_date: params.checkIn,
     check_out_date: params.checkOut,
@@ -70,14 +71,16 @@ function parseHotelDetail(data: Record<string, unknown>): HotelDetail {
     total: (rb.total_mentioned as number) || 0,
   }));
 
-  // --- Individual Reviews ---
-  const rawReviews = (data.typical_reviews as Array<Record<string, unknown>>) || [];
-  const reviews: HotelDetailReview[] = rawReviews.slice(0, 10).map((r) => ({
+  // --- Individual Reviews (try multiple SerpApi response fields) ---
+  const rawTypicalReviews = (data.typical_reviews as Array<Record<string, unknown>>) || [];
+  const rawOtherReviews = (data.other_reviews as Array<Record<string, unknown>>) || [];
+  const allRawReviews = [...rawTypicalReviews, ...rawOtherReviews];
+  const reviews: HotelDetailReview[] = allRawReviews.slice(0, 10).map((r) => ({
     rating: r.rating as number | undefined,
-    text: (r.description as string) || (r.text as string) || "",
+    text: (r.description as string) || (r.text as string) || (r.snippet as string) || "",
     date: r.date as string | undefined,
     source: r.source as string | undefined,
-    author: r.author as string | undefined,
+    author: (r.author as string) || (r.username as string) || undefined,
   })).filter((r) => r.text);
 
   // --- Nearby Places ---
@@ -93,22 +96,33 @@ function parseHotelDetail(data: Record<string, unknown>): HotelDetail {
     };
   }).filter((np) => np.name);
 
-  // --- Prices from multiple booking sites ---
+  // --- Prices from multiple booking sites (try both prices and featured_prices) ---
   const rawPrices = (data.prices as Array<Record<string, unknown>>) || [];
-  const prices: HotelDetailPriceSource[] = rawPrices.map((p) => {
+  const rawFeaturedPrices = (data.featured_prices as Array<Record<string, unknown>>) || [];
+  const allRawPrices = [...rawFeaturedPrices, ...rawPrices];
+  const seenSources = new Set<string>();
+  const prices: HotelDetailPriceSource[] = allRawPrices.map((p) => {
     const ratePerNight = p.rate_per_night as Record<string, unknown> | undefined;
     const price = parseFloat(
-      String(ratePerNight?.extracted_lowest || "0").replace(/[^0-9.]/g, "")
+      String(ratePerNight?.extracted_lowest || p.extracted_price || p.price || "0").replace(/[^0-9.]/g, "")
     ) || 0;
+    const source = (p.source as string) || (p.name as string) || "Unknown";
     return {
-      source: (p.source as string) || "Unknown",
+      source,
       price,
       currency: "USD",
-      url: p.link as string | undefined,
-      roomType: p.room_type as string | undefined,
+      url: (p.link as string) || (p.booking_link as string) || undefined,
+      roomType: (p.room_type as string) || (p.room_description as string) || undefined,
       logo: p.logo as string | undefined,
     };
-  }).filter((p) => p.price > 0);
+  }).filter((p) => {
+    if (p.price <= 0) return false;
+    // Dedup by source name
+    const key = p.source.toLowerCase();
+    if (seenSources.has(key)) return false;
+    seenSources.add(key);
+    return true;
+  });
 
   // --- Amenities ---
   const rawAmenities = (data.amenities as string[]) || [];

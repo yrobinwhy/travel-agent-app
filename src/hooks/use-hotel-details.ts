@@ -40,10 +40,19 @@ export function useHotelDetails(
 
     const params = new URLSearchParams({
       token,
+      ...(hotel.location && { location: hotel.location }),
       ...(hotel.checkIn && { check_in: hotel.checkIn }),
       ...(hotel.checkOut && { check_out: hotel.checkOut }),
       ...(hotel.guests && { adults: String(hotel.guests) }),
     });
+
+    // Location is required — fall back to neighborhood or address
+    if (!params.has("location")) {
+      const fallbackLocation = hotel.neighborhood || hotel.address || "";
+      if (fallbackLocation) {
+        params.set("location", fallbackLocation);
+      }
+    }
 
     fetch(`/api/hotels/details?${params.toString()}`)
       .then(async (res) => {

@@ -145,6 +145,7 @@ export interface HotelDetail {
 
 export interface HotelDetailParams {
   propertyToken: string;
+  location: string; // Required by SerpApi — the q parameter
   checkIn: string;
   checkOut: string;
   adults?: number;

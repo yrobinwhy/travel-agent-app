@@ -54,6 +54,7 @@ export interface HotelOfferDisplay {
   guests?: number;
   locationRating?: number;
   reviewBreakdown?: Array<{ name: string; positive: number; negative: number; total: number }>;
+  location?: string; // Search location (city name) for detail API
 }
 
 export interface HotelResultData {

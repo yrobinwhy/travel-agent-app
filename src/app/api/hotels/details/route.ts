@@ -24,14 +24,15 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const propertyToken = searchParams.get("token");
+  const location = searchParams.get("location");
   const checkIn = searchParams.get("check_in");
   const checkOut = searchParams.get("check_out");
   const adults = searchParams.get("adults");
   const currency = searchParams.get("currency");
 
-  if (!propertyToken || !checkIn || !checkOut) {
+  if (!propertyToken || !checkIn || !checkOut || !location) {
     return Response.json(
-      { error: "Missing required params: token, check_in, check_out" },
+      { error: "Missing required params: token, location, check_in, check_out" },
       { status: 400 }
     );
   }
@@ -39,6 +40,7 @@ export async function GET(request: Request) {
   try {
     const detail = await fetchHotelDetails({
       propertyToken,
+      location,
       checkIn,
       checkOut,
       adults: adults ? parseInt(adults) : undefined,

@@ -85,10 +85,10 @@ async function enrichWithTripAdvisor(offers: HotelOffer[], location: string): Pr
   if (!apiKey || offers.length === 0) return offers;
 
   try {
-    // Search for TripAdvisor top hotels in this city + get individual hotel ratings
+    // Search for TripAdvisor TRAVELER RANKED hotels (not featured/value sort)
     const searchParams = new URLSearchParams({
       engine: "google",
-      q: `best hotels ${location} site:tripadvisor.com`,
+      q: `"traveler ranked" hotels ${location} site:tripadvisor.com`,
       api_key: apiKey,
       num: "10",
     });
@@ -184,9 +184,9 @@ async function enrichWithTripAdvisor(offers: HotelOffer[], location: string): Pr
         }
       }
 
-      // Prefer the exact "ranked #X of Y" from individual hotel page
+      // Prefer the exact "ranked #X of Y" from individual hotel page (Traveler Ranked)
       const rankText = ta?.rankText ||
-        (cityRank ? `#${cityRank} in ${location} (Featured)` : undefined);
+        (cityRank ? `#${cityRank} in ${location}` : undefined);
 
       return {
         ...offer,
